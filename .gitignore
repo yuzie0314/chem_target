@@ -13,8 +13,12 @@ build/
 env/
 
 # Output files (generated, not source)
-output/images/
+output/
 fg_abundance_table.csv
+
+# Large raw DB downloads — re-download via interaction_analyzer.py
+db/*.gz
+db/*.txt
 
 # Data files — keep test SDF, ignore large user uploads
 data/*.mol2
