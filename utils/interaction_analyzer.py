@@ -31,7 +31,12 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from rdkit import Chem
+from rdkit import Chem, RDLogger
+
+# Suppress RDKit SMILES/SMARTS parse noise — invalid ligands are handled
+# explicitly (ligand_to_smiles returns None; detect_fgs returns []).
+RDLogger.DisableLog("rdApp.error")
+RDLogger.DisableLog("rdApp.warning")
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))

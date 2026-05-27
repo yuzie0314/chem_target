@@ -1,11 +1,15 @@
 """Functional group detection logic using RDKit fragment counters and SMARTS patterns."""
 
 import pandas as pd
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem import Fragments
 
 from constants.fg_names import FG_NAMES
 from constants.fg_smarts import FG_SMARTS
+
+# Suppress RDKit parse noise — invalid SMILES are handled by explicit None checks.
+RDLogger.DisableLog("rdApp.error")
+RDLogger.DisableLog("rdApp.warning")
 
 # All callable fr_* functions from RDKit Fragments module
 _FG_FUNCTIONS: dict[str, object] = {
