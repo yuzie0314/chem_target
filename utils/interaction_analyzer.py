@@ -350,6 +350,11 @@ def build_interaction_table(entries: list[dict]) -> pd.DataFrame:
         if i % 50 == 0:
             print(f"    {i}/{len(unique_ligands)} ligands processed ...", flush=True)
 
+        # Checkpoint: persist SMILES cache every 500 ligands so progress
+        # is not lost if the process is interrupted (sleep, crash, Ctrl-C).
+        if i % 500 == 0:
+            save_smiles_cache()
+
     print(f"  Ligands: {resolved} with FGs, "
           f"{skipped_no_smiles} no SMILES, {skipped_no_fg} no FG match")
 
