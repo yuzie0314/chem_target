@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# Conda / virtualenv
+.env
+.venv
+env/
+
+# Output files (generated, not source)
+output/images/
+fg_abundance_table.csv
+
+# Data files — keep test SDF, ignore large user uploads
+data/*.mol2
+data/*.sdf
+!data/test.sdf
+
+# DB is auto-generated — DO commit it so the repo is usable out of the box
+# db/fg_database.json  ← intentionally tracked
+
+# Claude Code internal files
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp

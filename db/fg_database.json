@@ -1,0 +1,176 @@
+{
+  "last_updated": "2026-05-27",
+  "sources": [
+    "chebi",
+    "pubchem"
+  ],
+  "functional_groups": {
+    "Carboxylic acid (COOH)": {
+      "smarts": "C(=O)[OH]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:33575",
+      "description": "A carbon oxoacid acid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any any monovalent functional group. Carboxylic acids are the most common type of organic acid.",
+      "known_target_classes": [
+        "protease",
+        "transporter",
+        "nuclear receptor"
+      ],
+      "source": "chebi"
+    },
+    "Ester": {
+      "smarts": "C(=O)OC",
+      "pubchem_cid": 165217,
+      "chebi_id": "CHEBI:35701",
+      "description": "A compound formally derived from an oxoacid RkE(=O)l(OH)m (l > 0) and an alcohol, phenol, heteroarenol, or enol by linking with formal loss of water from an acidic hydroxy group of the former and a hydroxy group of the latter.",
+      "known_target_classes": [
+        "esterase",
+        "lipase"
+      ],
+      "source": "chebi"
+    },
+    "Ether (C-O-C)": {
+      "smarts": "COC",
+      "pubchem_cid": 3283,
+      "chebi_id": "CHEBI:25698",
+      "description": "An organooxygen compound with formula ROR, where R is not hydrogen.",
+      "known_target_classes": [],
+      "source": "chebi"
+    },
+    "Aromatic ring": {
+      "smarts": "c1ccccc1",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:22712",
+      "description": "Any benzenoid aromatic compound consisting of the benzene skeleton and its substituted derivatives.",
+      "known_target_classes": [
+        "kinase",
+        "GPCR",
+        "nuclear receptor"
+      ],
+      "source": "chebi"
+    },
+    "Amide (CONH)": {
+      "smarts": "C(=O)N",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:37622",
+      "description": "An amide of a carboxylic acid, having the structure RC(=O)NR2. The term is used as a suffix in systematic name formation to denote the ‒C(=O)NH2 group including its carbon atom.",
+      "known_target_classes": [
+        "protease",
+        "kinase"
+      ],
+      "source": "chebi"
+    },
+    "Amine (NH2)": {
+      "smarts": "N",
+      "pubchem_cid": 139106940,
+      "chebi_id": "CHEBI:32952",
+      "description": "A compound formally derived from ammonia by replacing one, two or three hydrogen atoms by hydrocarbyl groups.",
+      "known_target_classes": [
+        "GPCR",
+        "ion channel",
+        "transporter"
+      ],
+      "source": "chebi"
+    },
+    "Carbonyl (C=O)": {
+      "smarts": "C=O",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:23019",
+      "description": "A functional group consisting of a carbon atom doubly bonded to an oxygen atom (C=O). Found in aldehydes, ketones, carboxylic acids, esters, and amides.",
+      "known_target_classes": [
+        "oxidoreductase",
+        "aldehyde dehydrogenase"
+      ],
+      "source": "manual"
+    },
+    "Hydroxyl (OH)": {
+      "smarts": "[OH]",
+      "pubchem_cid": 157350,
+      "chebi_id": "CHEBI:43176",
+      "description": "A functional group consisting of an oxygen atom bonded to a hydrogen atom (‒OH). Present in alcohols and phenols; confers hydrogen-bond donor capability.",
+      "known_target_classes": [
+        "kinase",
+        "phosphatase",
+        "transporter"
+      ],
+      "source": "manual"
+    },
+    "Halogen": {
+      "smarts": "[F,Cl,Br,I]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:17792",
+      "description": "A compound containing at least one carbon-halogen bond (where X is a halogen atom).",
+      "known_target_classes": [
+        "kinase",
+        "ion channel"
+      ],
+      "source": "chebi"
+    },
+    "Nitrile (CN)": {
+      "smarts": "C#N",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:18379",
+      "description": "A compound having the structure RC≡N; thus a C-substituted derivative of hydrocyanic acid, HC≡N. In systematic nomenclature, the suffix nitrile denotes the triply bound ≡N atom, not the carbon atom attached to it.",
+      "known_target_classes": [
+        "protease",
+        "nitrile hydratase"
+      ],
+      "source": "chebi"
+    },
+    "Nitro (NO2)": {
+      "smarts": "[N+](=O)[O-]",
+      "pubchem_cid": 3032552,
+      "chebi_id": "CHEBI:35716",
+      "description": "A nitro compound having the nitro group (‒NO2) attached to a carbon atom.",
+      "known_target_classes": [
+        "nitroreductase"
+      ],
+      "source": "chebi"
+    },
+    "Sulfonamide": {
+      "smarts": "S(=O)(=O)N",
+      "pubchem_cid": 5333,
+      "chebi_id": "CHEBI:35358",
+      "description": "An amide of a sulfonic acid RS(=O)2NR'2.",
+      "known_target_classes": [
+        "carbonic anhydrase",
+        "COX"
+      ],
+      "source": "chebi"
+    },
+    "Imidazole": {
+      "smarts": "c1cnc[nH]1",
+      "pubchem_cid": 795,
+      "chebi_id": "CHEBI:24780",
+      "description": "A five-membered organic heterocycle containing two nitrogen atoms at positions 1 and 3, or any of its derivatives; compounds containing an imidazole skeleton.",
+      "known_target_classes": [
+        "histamine receptor",
+        "cytochrome P450"
+      ],
+      "source": "chebi"
+    },
+    "Benzene": {
+      "smarts": "c1ccccc1",
+      "pubchem_cid": 241,
+      "chebi_id": "CHEBI:16716",
+      "description": "A six-carbon aromatic annulene in which each carbon atom donates one of its two 2p electrons into a delocalised π system. A toxic, flammable liquid byproduct of coal distillation, it is used as an industrial solvent. Benzene is a carcinogen that also damages bone marrow and the central nervous system.",
+      "known_target_classes": [
+        "kinase",
+        "GPCR",
+        "nuclear receptor"
+      ],
+      "source": "chebi"
+    },
+    "Tertiary amine": {
+      "smarts": "N(C)(C)C",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:32876",
+      "description": "A compound formally derived from ammonia by replacing three hydrogen atoms by hydrocarbyl groups.",
+      "known_target_classes": [
+        "GPCR",
+        "ion channel",
+        "cholinesterase"
+      ],
+      "source": "chebi"
+    }
+  }
+}

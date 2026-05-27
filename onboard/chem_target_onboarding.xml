@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project_onboarding>
+
+  <developer>
+    <name>Yu-Jen Chang</name>
+    <background>
+      <role>Licensed pharmacist (Taiwan)</role>
+      <role>PhD candidate — Biotechnology and Biomedical Industry, China Medical University</role>
+      <role>Data Scientist @ Amili (current, remote/WFH)</role>
+    </background>
+    <expertise>
+      <item>Molecular docking — iGEMDOCK, SiMMap</item>
+      <item>Cheminformatics — RDKit, Open Babel</item>
+      <item>Functional group intuition from pharmacy background</item>
+      <item>Microbiome analysis — 16S, shotgun sequencing, de novo workflow design</item>
+      <item>Python, conda environment management</item>
+    </expertise>
+    <publications>
+      <paper>
+        <title>Discovery of Novel Spike Inhibitors against SARS-CoV-2 Infection</title>
+        <journal>International Journal of Molecular Sciences, 2024</journal>
+        <pmid>38892294</pmid>
+        <contribution>Molecular docking, virtual screening of 260,000+ NCI compounds, identified C8.2 with EC50=5.9μM against SARS-CoV-2 and Omicron variant</contribution>
+      </paper>
+      <paper>
+        <title>Antiviral research paper (Biochemical Pharmacology 2023)</title>
+        <doi>S0166354223001316</doi>
+        <contribution>Molecular docking — details under NDA with previous lab</contribution>
+      </paper>
+    </publications>
+    <coding_style>
+      <preference>Layered architecture — constants, utils, db separated</preference>
+      <preference>Data-driven design — no hardcoded values in logic files</preference>
+      <preference>Modular and maintainable over clever</preference>
+      <preference>Auto-updatable databases preferred over static files</preference>
+    </coding_style>
+    <environment>
+      <os>Windows</os>
+      <conda_env>chem_target (Python 3.10)</conda_env>
+      <installed>rdkit, openbabel, pandas, numpy, matplotlib, requests</installed>
+    </environment>
+  </developer>
+
+  <project>
+    <name>chem_target</name>
+    <vision>
+      A compound-to-target prediction tool that takes a molecule (SMILES/SDF/other formats)
+      and predicts which enzymes or proteins it likely interacts with, based on functional
+      group analysis and molecular docking. Long-term goal: package as a consultancy tool
+      and eventually a SaaS product for small biotech and natural product companies.
+    </vision>
+    <core_concept>
+      Reverse docking / target fishing — instead of starting from a protein target,
+      we start from a compound and ask: what can this bind to?
+      Yu-Jen's unique edge: pharmacist functional group intuition + computational docking experience.
+    </core_concept>
+
+    <current_directory_structure>
+      <![CDATA[
+C:\chem_target\
+├── data/
+│   └── compounds.csv              # Input: col1=name, col2=smiles
+├── constants/
+│   ├── __init__.py
+│   ├── fg_names.py                # TODO: move FG_NAMES dict here
+│   └── fg_smarts.py               # TODO: move FG_SMARTS dict here
+├── db/
+│   └── fg_database.json           # TODO: auto-updated from PubChem/ChEMBL
+├── utils/
+│   ├── __init__.py
+│   ├── io_handler.py              # TODO: read CSV / SDF / other formats via OpenBabel
+│   ├── fg_detector.py             # TODO: functional group detection logic
+│   ├── visualizer.py              # TODO: RDKit drawing with FG highlighting
+│   └── explore_pubchem.py         # DONE: API exploration script
+├── output/
+│   └── images/
+├── functional_group_table.py      # v1 — working prototype
+├── functional_group_table_v2.py   # v2 — with FG names + SVG output (monolithic, needs refactoring)
+└── main.py                        # TODO: main entry point
+      ]]>
+    </current_directory_structure>
+
+    <completed>
+      <item>conda environment (chem_target, Python 3.10) with rdkit + openbabel installed and verified</item>
+      <item>v1 prototype: reads SMILES, outputs functional group abundance table (RDKit fr_ functions)</item>
+      <item>v2 prototype: adds human-readable FG names, CSV input, SVG molecule images with highlighted functional groups</item>
+      <item>explore_pubchem.py: API explorer to understand PubChem data structure</item>
+      <item>Project architecture designed (layered: constants / db / utils / main)</item>
+    </completed>
+
+    <immediate_next_steps>
+      <step order="1">
+        Refactor v2 monolithic script into layered architecture:
+        - Move FG_NAMES to constants/fg_names.py
+        - Move FG_SMARTS to constants/fg_smarts.py
+        - Move detection logic to utils/fg_detector.py
+        - Move drawing logic to utils/visualizer.py
+        - Move IO (CSV/SDF reading) to utils/io_handler.py
+        - main.py as clean entry point
+      </step>
+      <step order="2">
+        Build db/db_updater.py:
+        - Primary source: PubChem API
+        - Secondary source: ChEMBL API
+        - Output: db/fg_database.json (with last_updated timestamp)
+        - Schema: functional group name, SMARTS, PubChem CID, description, known target classes
+        - Should be runnable as standalone script to refresh DB
+      </step>
+      <step order="3">
+        Build utils/io_handler.py:
+        - Support SMILES from CSV (done in v2, needs modularizing)
+        - Support SDF file input via OpenBabel
+        - Extensible for other formats later
+      </step>
+      <step order="4">
+        Run explore_pubchem.py, review raw JSON output,
+        decide which PubChem fields to include in fg_database.json schema
+      </step>
+    </immediate_next_steps>
+
+    <design_decisions>
+      <decision>
+        <topic>DB update strategy</topic>
+        <choice>Auto-fetch from PubChem (primary) and ChEMBL (secondary)</choice>
+        <rationale>Prefer automated over manual maintenance. DB updater runs as standalone script.</rationale>
+      </decision>
+      <decision>
+        <topic>Constants management</topic>
+        <choice>Separate constants/ folder with individual .py files per domain</choice>
+        <rationale>Developer preference — clean separation, easy to update one domain without touching others</rationale>
+      </decision>
+      <decision>
+        <topic>Docking tool</topic>
+        <choice>iGEMDOCK + SiMMap (developer's primary tools)</choice>
+        <rationale>Developer has deep experience with these; differentiated from typical AutoDock/Glide users</rationale>
+      </decision>
+      <decision>
+        <topic>Input formats</topic>
+        <choice>Start with SMILES/CSV, extend to SDF and others via OpenBabel</choice>
+        <rationale>OpenBabel handles format conversion; extensible without rewriting core logic</rationale>
+      </decision>
+    </design_decisions>
+
+    <longer_term_vision>
+      <item>Add target prediction layer — map detected functional groups to known protein/enzyme classes</item>
+      <item>Integrate with iGEMDOCK for automated docking against predicted targets</item>
+      <item>Generate PDF/HTML report for non-technical users (small biotech clients)</item>
+      <item>Package as consultancy deliverable for international biotech / natural product companies</item>
+      <item>Potential SaaS product — compound uploaded, report returned</item>
+    </longer_term_vision>
+  </project>
+
+</project_onboarding>
