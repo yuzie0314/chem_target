@@ -303,18 +303,21 @@ def _require_biopython() -> None:
         ) from None
 
 
-def extract_contacts(pdb_path: Path) -> list[tuple[str, list[str]]]:
+def extract_contacts(
+    pdb_path: Path,
+    cutoff: float = CONTACT_CUTOFF,
+) -> list[tuple[str, list[str]]]:
     """Find small-molecule ligand ↔ protein-residue contacts in a PDB file.
 
     Algorithm:
         1. Build a NeighborSearch index over all protein ATOM-record atoms.
         2. For each HETATM ligand (not in SKIP_LIGANDS), query the index
-           for all protein residues within CONTACT_CUTOFF Angstroms of any
-           ligand atom.
+           for all protein residues within `cutoff` Angstroms of any ligand atom.
         3. Return the 3-letter CCD code and the set of contacting AA (1-letter).
 
     Args:
         pdb_path: Path to the PDB-format file.
+        cutoff:   Contact distance threshold in Angstroms (default: CONTACT_CUTOFF).
 
     Returns:
         List of (ccd_id, [aa_1letter, ...]) — one tuple per unique ligand instance.
@@ -367,7 +370,7 @@ def extract_contacts(pdb_path: Path) -> list[tuple[str, list[str]]]:
                 nearby: set[str] = set()
                 for atom in residue:
                     for nb_res in ns.search(
-                        atom.get_coord(), CONTACT_CUTOFF, level="R"
+                        atom.get_coord(), cutoff, level="R"
                     ):
                         aa1 = AA_3TO1.get(nb_res.get_resname().strip())
                         if aa1:
@@ -417,10 +420,15 @@ def save_map(data: dict, path: Path = MAP_PATH) -> None:
 # 6. Core processor (one PDB entry)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def process_entry(pdb_id: str, fam: dict) -> str:
+def process_entry(pdb_id: str, fam: dict, cutoff: float = CONTACT_CUTOFF) -> str:
     """Download and analyse one PDB entry; update fam['fg_residue_counts'].
 
     The temporary PDB file is always deleted after analysis (success or failure).
+
+    Args:
+        pdb_id: 4-char PDB accession code.
+        fam:    Family dict from fg_residue_map.json (mutated in-place).
+        cutoff: Contact distance threshold passed to extract_contacts.
 
     Returns one of:
         "ok"               interactions found and counts updated
@@ -436,7 +444,7 @@ def process_entry(pdb_id: str, fam: dict) -> str:
 
     # ── Analyse (always clean up tmp file) ────────────────────────────────────
     try:
-        contacts = extract_contacts(pdb_path)
+        contacts = extract_contacts(pdb_path, cutoff=cutoff)
     except ValueError as exc:
         return f"parse_error: {exc}"
     finally:
@@ -510,10 +518,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Allow CLI override of global cutoff
-    global CONTACT_CUTOFF
-    CONTACT_CUTOFF = args.cutoff
-
     map_path   = Path(args.output)
     family_key = args.family.lower().strip()
 
@@ -582,7 +586,7 @@ def main() -> None:
     fail_count = 0
 
     for i, pdb_id in enumerate(remaining, 1):
-        status = process_entry(pdb_id, fam)
+        status = process_entry(pdb_id, fam, cutoff=args.cutoff)
 
         if status == "ok":
             fam["pdb_ids_done"].append(pdb_id)
