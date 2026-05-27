@@ -7,6 +7,7 @@ Pipeline:
   1. Download BioLiP_nr (if not cached locally)
   2. Parse: (ligand_3letter_code, binding_residues_1letter[])
   3. Convert ligand 3-letter → SMILES via RCSB CCD API
+     (results persisted in db/ccd_smiles_cache.json — reused across runs)
   4. Detect functional groups via FG_SMARTS (substructure match)
   5. Build co-occurrence table:
        rows = amino acid (1-letter code, e.g. H, C, Y)
@@ -16,8 +17,9 @@ Pipeline:
 
 Usage:
     python utils/interaction_analyzer.py
-    python utils/interaction_analyzer.py --top 500      # use first N entries (faster)
+    python utils/interaction_analyzer.py --top 500          # quick test
     python utils/interaction_analyzer.py --local db/BioLiP_nr.txt.gz
+    python utils/interaction_analyzer.py --update           # check & re-run if BioLiP changed
 """
 
 import argparse
@@ -44,9 +46,11 @@ sys.path.insert(0, str(_ROOT))
 from constants.fg_smarts import FG_SMARTS  # noqa: E402
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BIOLIP_NR_URL   = "https://zhanggroup.org/BioLiP/download/BioLiP_nr.txt.gz"
-BIOLIP_NR_CACHE = _ROOT / "db" / "BioLiP_nr.txt.gz"
-OUTPUT_CSV      = _ROOT / "db" / "fg_residue_table.csv"
+BIOLIP_NR_URL    = "https://zhanggroup.org/BioLiP/download/BioLiP_nr.txt.gz"
+BIOLIP_NR_CACHE  = _ROOT / "db" / "BioLiP_nr.txt.gz"
+OUTPUT_CSV       = _ROOT / "db" / "fg_residue_table.csv"
+SMILES_CACHE_PATH = _ROOT / "db" / "ccd_smiles_cache.json"   # persistent SMILES cache
+BIOLIP_META_PATH  = _ROOT / "db" / "biolip_metadata.json"    # update-detection metadata
 
 # ── RCSB CCD (Chemical Component Dictionary) API ──────────────────────────────
 RCSB_CCD_URL = "https://data.rcsb.org/rest/v1/core/chemcomp/{ccd_id}"
@@ -72,21 +76,73 @@ _SKIP_LIGANDS: set[str] = {
 }
 
 
-# ── Download ───────────────────────────────────────────────────────────────────
+# ── BioLiP download & update detection ────────────────────────────────────────
 
-def download_biolip_nr(dest: Path = BIOLIP_NR_CACHE) -> Path:
+def _save_biolip_metadata(dest: Path, content_length: int, etag: str) -> None:
+    """Persist download metadata for future update checks."""
+    from datetime import date
+    meta = {
+        "url":            BIOLIP_NR_URL,
+        "last_downloaded": str(date.today()),
+        "file_size_bytes": dest.stat().st_size,
+        "content_length":  content_length,
+        "etag":            etag,
+    }
+    BIOLIP_META_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(BIOLIP_META_PATH, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+
+def check_biolip_update() -> tuple[bool, str]:
+    """Check whether a newer BioLiP_nr.txt.gz is available on the server.
+
+    Uses HTTP HEAD to compare Content-Length and ETag against stored metadata.
+    Returns (update_available: bool, description: str).
+    """
+    if not BIOLIP_META_PATH.exists():
+        return True, "No metadata found — treating as first run"
+
+    with open(BIOLIP_META_PATH, encoding="utf-8") as f:
+        meta = json.load(f)
+
+    try:
+        r = requests.head(BIOLIP_NR_URL, timeout=15)
+        server_len  = int(r.headers.get("Content-Length", 0))
+        server_etag = r.headers.get("ETag", "").strip('"')
+    except Exception as exc:
+        return False, f"Cannot reach server: {exc}"
+
+    stored_len  = meta.get("content_length", 0)
+    stored_etag = meta.get("etag", "")
+
+    if server_len and server_len != stored_len:
+        return True, (
+            f"Size changed: stored={stored_len/1e6:.2f} MB  "
+            f"server={server_len/1e6:.2f} MB"
+        )
+    if server_etag and stored_etag and server_etag != stored_etag:
+        return True, f"ETag changed: {stored_etag!r} → {server_etag!r}"
+
+    return False, (
+        f"Up to date  (size={stored_len/1e6:.2f} MB, "
+        f"downloaded={meta.get('last_downloaded', '?')})"
+    )
+
+
+def download_biolip_nr(dest: Path = BIOLIP_NR_CACHE, force: bool = False) -> Path:
     """Download BioLiP_nr.txt.gz in 512 KB chunks and save to dest.
 
-    Skips download if the file already exists.
+    Skips download if the file already exists, unless force=True.
+    Saves metadata to db/biolip_metadata.json after download.
     """
-    if dest.exists():
+    if dest.exists() and not force:
         print(f"  Using cached: {dest}")
         return dest
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"  Downloading BioLiP_nr from {BIOLIP_NR_URL} ...")
 
-    r = requests.get(BIOLIP_NR_URL, stream=True, timeout=30)
+    r = requests.get(BIOLIP_NR_URL, stream=True, timeout=60)
     r.raise_for_status()
 
     total = int(r.headers.get("Content-Length", 0))
@@ -101,6 +157,12 @@ def download_biolip_nr(dest: Path = BIOLIP_NR_CACHE) -> Path:
                 print(f"\r  {downloaded/1e6:.1f} / {total/1e6:.1f} MB ({pct:.0f}%)",
                       end="", flush=True)
     print(f"\n  Saved: {dest}")
+
+    _save_biolip_metadata(
+        dest,
+        content_length=total,
+        etag=r.headers.get("ETag", "").strip('"'),
+    )
     return dest
 
 
@@ -161,16 +223,39 @@ def parse_biolip(filepath: Path, top: int | None = None) -> list[dict]:
     return entries
 
 
-# ── SMILES lookup ──────────────────────────────────────────────────────────────
+# ── SMILES lookup — persistent cache ──────────────────────────────────────────
 
-_smiles_cache: dict[str, str | None] = {}   # 3-letter code → SMILES or None
+def _load_smiles_cache() -> dict[str, str | None]:
+    """Load db/ccd_smiles_cache.json on startup (empty dict if missing)."""
+    if SMILES_CACHE_PATH.exists():
+        with open(SMILES_CACHE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_smiles_cache() -> None:
+    """Persist the in-memory SMILES cache to db/ccd_smiles_cache.json.
+
+    Call this at the end of a run (or periodically) to avoid re-querying
+    the same ligands on future runs or after interruptions.
+    """
+    SMILES_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SMILES_CACHE_PATH.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(_smiles_cache, f, indent=2, ensure_ascii=False)
+    tmp.replace(SMILES_CACHE_PATH)
+    print(f"  SMILES cache saved: {len(_smiles_cache)} entries → {SMILES_CACHE_PATH}")
+
+
+# Load from disk at import time so every run benefits from previous queries
+_smiles_cache: dict[str, str | None] = _load_smiles_cache()
 
 
 def ligand_to_smiles(ligand_id: str) -> str | None:
     """Fetch SMILES for a PDB 3-letter ligand code via RCSB CCD API.
 
-    Caches results in memory for the session.
-    Returns None if the ligand is not found or has no SMILES.
+    Results are persisted in db/ccd_smiles_cache.json across runs.
+    Returns None if the ligand is not found or has no valid SMILES.
     """
     if ligand_id in _smiles_cache:
         return _smiles_cache[ligand_id]
@@ -182,7 +267,7 @@ def ligand_to_smiles(ligand_id: str) -> str | None:
         time.sleep(CCD_DELAY)
         if r.status_code == 200:
             data = r.json()
-            # pdbx_chem_comp_descriptor is a list of dicts with type + descriptor
+            # pdbx_chem_comp_descriptor: list of {type, descriptor}
             for desc in data.get("pdbx_chem_comp_descriptor", []):
                 if desc.get("type") == "SMILES_CANONICAL":
                     smiles = desc.get("descriptor")
@@ -301,32 +386,53 @@ def main() -> None:
                         help="Limit to first N binding events (for quick testing)")
     parser.add_argument("--output", default=str(OUTPUT_CSV),
                         help="Output CSV path")
+    parser.add_argument("--update", action="store_true",
+                        help=(
+                            "Check if BioLiP_nr has been updated on the server. "
+                            "If yes, re-download and rebuild the table. "
+                            "SMILES cache is always reused to save API calls."
+                        ))
     args = parser.parse_args()
 
-    # 1. Get data file
-    biolip_path = Path(args.local) if args.local else BIOLIP_NR_CACHE
-    if not biolip_path.exists():
-        print("Downloading BioLiP_nr ...")
-        download_biolip_nr(biolip_path)
+    # ── Update check ──────────────────────────────────────────────────────────
+    if args.update:
+        print("Checking for BioLiP_nr updates ...")
+        has_update, reason = check_biolip_update()
+        print(f"  {reason}")
+        if not has_update:
+            print("Nothing to do.")
+            return
+        print("  Re-downloading BioLiP_nr ...")
+        biolip_path = BIOLIP_NR_CACHE
+        download_biolip_nr(biolip_path, force=True)
     else:
-        print(f"Using: {biolip_path}")
+        biolip_path = Path(args.local) if args.local else BIOLIP_NR_CACHE
+        if not biolip_path.exists():
+            print("Downloading BioLiP_nr ...")
+            download_biolip_nr(biolip_path)
+        else:
+            print(f"Using: {biolip_path}")
 
-    # 2. Parse
+    # ── Parse ─────────────────────────────────────────────────────────────────
     print(f"Parsing BioLiP (top={args.top or 'all'}) ...")
     entries = parse_biolip(biolip_path, top=args.top)
     print(f"  Parsed {len(entries)} binding events")
+    print(f"  SMILES cache pre-loaded: {len(_smiles_cache)} entries")
 
-    # 3. Build table
+    # ── Build table ───────────────────────────────────────────────────────────
     print("Building interaction table ...")
     df = build_interaction_table(entries)
 
-    # 4. Save
+    # ── Save table ────────────────────────────────────────────────────────────
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=True)
     print(f"\nSaved: {out}")
     print()
     print(df.to_string())
+
+    # ── Persist SMILES cache for future runs ──────────────────────────────────
+    save_smiles_cache()
 
 
 if __name__ == "__main__":
