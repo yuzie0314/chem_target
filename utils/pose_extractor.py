@@ -54,7 +54,8 @@ RDLogger.DisableLog("rdApp.warning")
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from constants.fg_smarts import FG_SMARTS  # noqa: E402
+from constants.fg_smarts import FG_SMARTS              # noqa: E402
+from utils.fg_detector import _PYTHON_DETECTORS        # noqa: E402
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BIOLIP_NR_CACHE   = _ROOT / "db" / "BioLiP_nr.txt.gz"
@@ -238,14 +239,22 @@ _SMARTS_PATTERNS: dict[str, Chem.Mol] = {
 
 
 def _detect_fgs(smiles: str) -> list[str]:
-    """Return FG names present in the molecule (subset of FG_SMARTS keys)."""
+    """Return FG names present in the molecule.
+
+    Combines SMARTS-based detection (FG_SMARTS) with Python-based detectors
+    (_PYTHON_DETECTORS, e.g. Steroid) for consistency with fg_detector.detect_smarts().
+    """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return []
-    return [
+    results = [
         name for name, pat in _SMARTS_PATTERNS.items()
         if pat is not None and mol.GetSubstructMatches(pat)
     ]
+    for fg_name, detector in _PYTHON_DETECTORS.items():
+        if detector(mol):
+            results.append(fg_name)
+    return results
 
 
 def _load_smiles_cache() -> dict[str, str | None]:
