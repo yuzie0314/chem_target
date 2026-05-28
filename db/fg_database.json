@@ -1,176 +1,304 @@
 {
-  "last_updated": "2026-05-27",
-  "sources": [
-    "chebi",
-    "pubchem"
-  ],
+  "last_updated": "2026-05-28",
+  "sources": ["chebi", "pubchem", "manual"],
+  "note": "Keys must exactly match FG_SMARTS keys in constants/fg_smarts.py. Rebuild db/fg_residue_table.csv after any key change.",
   "functional_groups": {
-    "Carboxylic acid (COOH)": {
+
+    "Carboxylic acid": {
       "smarts": "C(=O)[OH]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:33575",
-      "description": "A carbon oxoacid acid carrying at least one ‒C(=O)OH group and having the structure RC(=O)OH, where R is any any monovalent functional group. Carboxylic acids are the most common type of organic acid.",
+      "description": "RC(=O)OH group. Strong H-bond donor + acceptor; ionisable (pKa ~4.5). Engages Asp/Glu/Arg/Lys in active sites via salt bridge or direct coordination.",
       "known_target_classes": [
         "protease",
         "transporter",
-        "nuclear receptor"
+        "nuclear receptor",
+        "carbonic anhydrase",
+        "fatty acid binding protein"
       ],
       "source": "chebi"
     },
+
     "Ester": {
-      "smarts": "C(=O)OC",
+      "smarts": "[#6][CX3](=O)[OX2H0][#6]",
       "pubchem_cid": 165217,
       "chebi_id": "CHEBI:35701",
-      "description": "A compound formally derived from an oxoacid RkE(=O)l(OH)m (l > 0) and an alcohol, phenol, heteroarenol, or enol by linking with formal loss of water from an acidic hydroxy group of the former and a hydroxy group of the latter.",
+      "description": "RC(=O)OR' group. H-bond acceptor only; metabolically labile. Hydrolysed by esterases and lipases; prodrug strategy.",
       "known_target_classes": [
         "esterase",
-        "lipase"
+        "lipase",
+        "acetylcholinesterase"
       ],
       "source": "chebi"
     },
-    "Ether (C-O-C)": {
-      "smarts": "COC",
-      "pubchem_cid": 3283,
-      "chebi_id": "CHEBI:25698",
-      "description": "An organooxygen compound with formula ROR, where R is not hydrogen.",
-      "known_target_classes": [],
-      "source": "chebi"
-    },
-    "Aromatic ring": {
-      "smarts": "c1ccccc1",
-      "pubchem_cid": null,
-      "chebi_id": "CHEBI:22712",
-      "description": "Any benzenoid aromatic compound consisting of the benzene skeleton and its substituted derivatives.",
-      "known_target_classes": [
-        "kinase",
-        "GPCR",
-        "nuclear receptor"
-      ],
-      "source": "chebi"
-    },
-    "Amide (CONH)": {
-      "smarts": "C(=O)N",
+
+    "Amide": {
+      "smarts": "[CX3](=O)[NX3;H1,H2]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:37622",
-      "description": "An amide of a carboxylic acid, having the structure RC(=O)NR2. The term is used as a suffix in systematic name formation to denote the ‒C(=O)NH2 group including its carbon atom.",
+      "description": "RC(=O)NHR' group. Resonance-stabilised; H-bond donor + acceptor. Backbone motif of peptide substrates; preferred pharmacophore in protease/kinase inhibitors.",
       "known_target_classes": [
         "protease",
-        "kinase"
+        "kinase",
+        "amide hydrolase"
       ],
       "source": "chebi"
     },
-    "Amine (NH2)": {
-      "smarts": "N",
-      "pubchem_cid": 139106940,
-      "chebi_id": "CHEBI:32952",
-      "description": "A compound formally derived from ammonia by replacing one, two or three hydrogen atoms by hydrocarbyl groups.",
+
+    "Ketone": {
+      "smarts": "[#6][#6X3H0](=O)[#6]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:17087",
+      "description": "RC(=O)R' group (both neighbors are C). Pure H-bond acceptor. Targeted by oxidoreductases; electrophilic warhead in activated ketone inhibitors.",
       "known_target_classes": [
+        "oxidoreductase",
+        "aldose reductase",
+        "17beta-HSD",
+        "steroid enzyme"
+      ],
+      "source": "chebi"
+    },
+
+    "Aldehyde": {
+      "smarts": "[CX3H1](=O)",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:17478",
+      "description": "RCH=O group. Reactive electrophile; forms Schiff bases with Lys. Substrate for ALDH/ADH; found in some natural product warheads.",
+      "known_target_classes": [
+        "aldehyde dehydrogenase",
+        "alcohol dehydrogenase",
+        "oxidoreductase",
+        "protease"
+      ],
+      "source": "chebi"
+    },
+
+    "Hydroxyl": {
+      "smarts": "[OX2H;!$(Oc);!$(OC=O)]",
+      "pubchem_cid": 157350,
+      "chebi_id": "CHEBI:43176",
+      "description": "Aliphatic -OH group (excludes phenols and acid/ester OH). H-bond donor + acceptor. Engaged by Ser/Thr/Tyr kinases; common in sugar and nucleotide ligands.",
+      "known_target_classes": [
+        "kinase",
+        "phosphatase",
+        "transporter",
+        "alcohol dehydrogenase",
+        "glucosyltransferase"
+      ],
+      "source": "manual"
+    },
+
+    "Phenol": {
+      "smarts": "[OX2H]c",
+      "pubchem_cid": 996,
+      "chebi_id": "CHEBI:15882",
+      "description": "ArOH group. Stronger H-bond donor than aliphatic OH (pKa ~10); can ionise. Key pharmacophore in oestrogen receptor ligands, COX inhibitors, and COMT substrates.",
+      "known_target_classes": [
+        "COX",
+        "tyrosinase",
+        "COMT",
+        "nuclear receptor",
+        "estrogen receptor",
+        "lipoxygenase"
+      ],
+      "source": "chebi"
+    },
+
+    "Catechol": {
+      "smarts": "c1cc([OX2H])c([OX2H])cc1",
+      "pubchem_cid": 289,
+      "chebi_id": "CHEBI:16090",
+      "description": "Ortho-dihydroxybenzene motif. Strong metal chelator (Fe3+, Cu2+, Zn2+); COMT substrate. Present in quercetin, EGCG, catecholamines. Susceptible to oxidation.",
+      "known_target_classes": [
+        "COMT",
+        "tyrosinase",
+        "MAO",
+        "metalloenzyme",
+        "estrogen receptor",
+        "lipoxygenase"
+      ],
+      "source": "chebi"
+    },
+
+    "Ether": {
+      "smarts": "[OX2;!$(O=*);!$([OX2H]);!$(OC=O)]([#6])[#6]",
+      "pubchem_cid": 3283,
+      "chebi_id": "CHEBI:25698",
+      "description": "C-O-C group (not carbonyl, not OH, not ester oxygen). Weak H-bond acceptor. Metabolised by CYP450 O-dealkylation; common in drug scaffolds for improving bioavailability.",
+      "known_target_classes": [
+        "cytochrome P450",
+        "drug metabolism enzyme"
+      ],
+      "source": "chebi"
+    },
+
+    "Primary amine": {
+      "smarts": "[NX3H2;!$(NC=O);!$(NS=O);!$(Nc)]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:32879",
+      "description": "RNH2 group (excludes amide, sulfonamide, aromatic N). Ionisable (pKa ~10); strong H-bond donor. Substrate for MAO and amine oxidases; engages Asp/Glu by salt bridge.",
+      "known_target_classes": [
+        "MAO",
+        "amine oxidase",
+        "GPCR",
+        "transporter",
+        "acetylcholinesterase"
+      ],
+      "source": "chebi"
+    },
+
+    "Secondary amine": {
+      "smarts": "[NX3H1;!$(NC=O);!$(NS=O);!$(Nc)]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:32863",
+      "description": "R2NH group (excludes amide, sulfonamide, aromatic N). H-bond donor + acceptor. Common in GPCR ligands; substrate for MAO-B.",
+      "known_target_classes": [
+        "MAO",
         "GPCR",
         "ion channel",
         "transporter"
       ],
       "source": "chebi"
     },
-    "Carbonyl (C=O)": {
-      "smarts": "C=O",
+
+    "Tertiary amine": {
+      "smarts": "[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]",
       "pubchem_cid": null,
-      "chebi_id": "CHEBI:23019",
-      "description": "A functional group consisting of a carbon atom doubly bonded to an oxygen atom (C=O). Found in aldehydes, ketones, carboxylic acids, esters, and amides.",
+      "chebi_id": "CHEBI:32876",
+      "description": "R3N group (excludes imines, amides, sulfonamides, aromatic N). Non-ionisable in physiological range; H-bond acceptor only. Found in muscarinic/nicotinic ligands.",
       "known_target_classes": [
-        "oxidoreductase",
-        "aldehyde dehydrogenase"
-      ],
-      "source": "manual"
-    },
-    "Hydroxyl (OH)": {
-      "smarts": "[OH]",
-      "pubchem_cid": 157350,
-      "chebi_id": "CHEBI:43176",
-      "description": "A functional group consisting of an oxygen atom bonded to a hydrogen atom (‒OH). Present in alcohols and phenols; confers hydrogen-bond donor capability.",
-      "known_target_classes": [
-        "kinase",
-        "phosphatase",
-        "transporter"
-      ],
-      "source": "manual"
-    },
-    "Halogen": {
-      "smarts": "[F,Cl,Br,I]",
-      "pubchem_cid": null,
-      "chebi_id": "CHEBI:17792",
-      "description": "A compound containing at least one carbon-halogen bond (where X is a halogen atom).",
-      "known_target_classes": [
-        "kinase",
-        "ion channel"
+        "GPCR",
+        "ion channel",
+        "cholinesterase",
+        "nicotinic receptor"
       ],
       "source": "chebi"
     },
-    "Nitrile (CN)": {
-      "smarts": "C#N",
-      "pubchem_cid": null,
-      "chebi_id": "CHEBI:18379",
-      "description": "A compound having the structure RC≡N; thus a C-substituted derivative of hydrocyanic acid, HC≡N. In systematic nomenclature, the suffix nitrile denotes the triply bound ≡N atom, not the carbon atom attached to it.",
-      "known_target_classes": [
-        "protease",
-        "nitrile hydratase"
-      ],
-      "source": "chebi"
-    },
-    "Nitro (NO2)": {
-      "smarts": "[N+](=O)[O-]",
-      "pubchem_cid": 3032552,
-      "chebi_id": "CHEBI:35716",
-      "description": "A nitro compound having the nitro group (‒NO2) attached to a carbon atom.",
-      "known_target_classes": [
-        "nitroreductase"
-      ],
-      "source": "chebi"
-    },
-    "Sulfonamide": {
-      "smarts": "S(=O)(=O)N",
-      "pubchem_cid": 5333,
-      "chebi_id": "CHEBI:35358",
-      "description": "An amide of a sulfonic acid RS(=O)2NR'2.",
-      "known_target_classes": [
-        "carbonic anhydrase",
-        "COX"
-      ],
-      "source": "chebi"
-    },
+
     "Imidazole": {
       "smarts": "c1cnc[nH]1",
       "pubchem_cid": 795,
       "chebi_id": "CHEBI:24780",
-      "description": "A five-membered organic heterocycle containing two nitrogen atoms at positions 1 and 3, or any of its derivatives; compounds containing an imidazole skeleton.",
+      "description": "Five-membered aromatic heterocycle with N1 and N3. Mimics histidine; coordinates metal ions (Fe, Zn, Cu). Key motif in CYP450 inhibitors (azole antifungals) and histamine receptor ligands.",
       "known_target_classes": [
         "histamine receptor",
+        "cytochrome P450",
+        "histidine kinase",
+        "metalloprotease"
+      ],
+      "source": "chebi"
+    },
+
+    "Nitrile": {
+      "smarts": "C#N",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:18379",
+      "description": "RC≡N group. Electrophilic carbon; forms reversible covalent adduct with Cys/Ser. Used as warhead in covalent protease inhibitors (e.g. nirmatrelvir).",
+      "known_target_classes": [
+        "protease",
+        "nitrile hydratase",
+        "cysteine protease"
+      ],
+      "source": "chebi"
+    },
+
+    "Nitro": {
+      "smarts": "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
+      "pubchem_cid": 3032552,
+      "chebi_id": "CHEBI:35716",
+      "description": "-NO2 group. Electron withdrawing; bioreduced to nitroso/hydroxylamine/amine by nitroreductases and CYP450. Found in some antibiotics (metronidazole) and kinase inhibitors.",
+      "known_target_classes": [
+        "nitroreductase",
         "cytochrome P450"
       ],
       "source": "chebi"
     },
-    "Benzene": {
-      "smarts": "c1ccccc1",
-      "pubchem_cid": 241,
-      "chebi_id": "CHEBI:16716",
-      "description": "A six-carbon aromatic annulene in which each carbon atom donates one of its two 2p electrons into a delocalised π system. A toxic, flammable liquid byproduct of coal distillation, it is used as an industrial solvent. Benzene is a carcinogen that also damages bone marrow and the central nervous system.",
+
+    "Thiol": {
+      "smarts": "[SX2H]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:29256",
+      "description": "R-SH group. Strong nucleophile; coordinates metal ions (Zn2+, Fe, Cu). Undergoes disulfide exchange (Cys active sites). Key in cysteine proteases, thioredoxins, metalloenzymes.",
       "known_target_classes": [
-        "kinase",
-        "GPCR",
-        "nuclear receptor"
+        "cysteine protease",
+        "thioredoxin",
+        "metalloenzyme",
+        "oxidoreductase",
+        "HDAC"
       ],
       "source": "chebi"
     },
-    "Tertiary amine": {
-      "smarts": "N(C)(C)C",
-      "pubchem_cid": null,
-      "chebi_id": "CHEBI:32876",
-      "description": "A compound formally derived from ammonia by replacing three hydrogen atoms by hydrocarbyl groups.",
+
+    "Sulfonamide": {
+      "smarts": "[SX4](=O)(=O)[NX3]",
+      "pubchem_cid": 5333,
+      "chebi_id": "CHEBI:35358",
+      "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold.",
       "known_target_classes": [
-        "GPCR",
-        "ion channel",
-        "cholinesterase"
+        "carbonic anhydrase",
+        "COX",
+        "dihydropteroate synthase",
+        "kinase"
       ],
       "source": "chebi"
+    },
+
+    "Phenyl ring": {
+      "smarts": "c1ccccc1",
+      "pubchem_cid": 241,
+      "chebi_id": "CHEBI:22712",
+      "description": "Unsubstituted or substituted benzene ring. Pi-stacking with Phe/Tyr/Trp; hydrophobic contacts. Ubiquitous in kinase inhibitors, GPCRs ligands, and nuclear receptor agonists/antagonists.",
+      "known_target_classes": [
+        "kinase",
+        "GPCR",
+        "nuclear receptor",
+        "protease"
+      ],
+      "source": "chebi"
+    },
+
+    "Halogen": {
+      "smarts": "[F,Cl,Br,I]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:17792",
+      "description": "C-X bond (F, Cl, Br, I). F: metabolic block, lipophilicity tuning; Cl/Br: halogen bond donor to carbonyl O (backbone C=O of protein); I: bulky, used in X-ray structure work.",
+      "known_target_classes": [
+        "kinase",
+        "ion channel",
+        "halogenase",
+        "thyroid hormone receptor"
+      ],
+      "source": "chebi"
+    },
+
+    "Epoxide": {
+      "smarts": "[OX2r3]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:32955",
+      "description": "Three-membered ring with O. Highly reactive electrophile; alkylates Lys/Cys/His in active sites. Natural product warhead (terpenoids, mitomycin). Detoxified by epoxide hydrolase.",
+      "known_target_classes": [
+        "epoxide hydrolase",
+        "glutathione transferase",
+        "cytochrome P450",
+        "cysteine protease"
+      ],
+      "source": "chebi"
+    },
+
+    "α,β-unsat. carbonyl": {
+      "smarts": "[CX3](=O)C=C",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:51689",
+      "description": "Michael acceptor motif C=C-C=O. Undergoes 1,4-addition with soft nucleophiles (Cys-SH, Lys-NH2). Covalent warhead in natural products (curcumin, parthenolide, withaferin A) and designed covalent inhibitors.",
+      "known_target_classes": [
+        "cysteine protease",
+        "glutathione transferase",
+        "Nrf2 pathway",
+        "kinase",
+        "NF-kB pathway"
+      ],
+      "source": "manual"
     }
+
   }
 }
