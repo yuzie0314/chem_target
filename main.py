@@ -27,7 +27,7 @@ from pathlib import Path
 def run_fg(args: argparse.Namespace) -> None:
     """Functional group analysis pipeline."""
     from utils.io_handler import read_file
-    from utils.fg_detector import detect
+    from utils.fg_detector import detect_smarts_table
     from utils.visualizer import draw_compounds
 
     input_file = args.input
@@ -36,11 +36,11 @@ def run_fg(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Reading compounds from {input_file} ...")
-    compounds = read_file(input_file)
+    compounds = read_file(input_file, name_property=args.name_property)
     print(f"  {len(compounds)} compound(s) loaded.")
 
     print("Detecting functional groups ...")
-    df = detect(compounds)
+    df = detect_smarts_table(compounds)
 
     df.to_csv(args.output, index=True)
     print(f"Abundance table saved: {args.output}")
@@ -73,7 +73,7 @@ def run_predict(args: argparse.Namespace) -> None:
             print(f"Error: input file not found: {args.input}", file=sys.stderr)
             sys.exit(1)
         print(f"Reading compounds from {args.input} ...")
-        compounds = read_file(args.input)
+        compounds = read_file(args.input, name_property=args.name_property)
         print(f"  {len(compounds)} compound(s) loaded.\n")
 
     for name, smiles in compounds.items():
@@ -109,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--images", default="output/images",
         help="Output directory for SVG images (default: output/images)",
     )
+    fg_p.add_argument(
+        "--name-property", default=None, dest="name_property",
+        help="SDF property tag to use as compound name (e.g. 'ChEMBL_ID'). "
+             "Ignored for CSV. Falls back to molecule title line if not set.",
+    )
 
     # ── predict ───────────────────────────────────────────────────────────────
     pred_p = subparsers.add_parser(
@@ -118,6 +123,11 @@ def build_parser() -> argparse.ArgumentParser:
     pred_p.add_argument(
         "--input", default=None,
         help="Input CSV or SDF file",
+    )
+    pred_p.add_argument(
+        "--name-property", default=None, dest="name_property",
+        help="SDF property tag to use as compound name (e.g. 'ChEMBL_ID'). "
+             "Ignored for CSV. Falls back to molecule title line if not set.",
     )
     pred_p.add_argument(
         "--smiles", default=None,

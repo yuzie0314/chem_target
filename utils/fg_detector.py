@@ -1,4 +1,17 @@
-"""Functional group detection logic using RDKit fragment counters and SMARTS patterns."""
+"""Functional group detection logic using RDKit SMARTS patterns.
+
+Primary API
+-----------
+detect_smarts(smiles)          → list[str]          single molecule, FG presence
+detect_smarts_table(compounds) → pd.DataFrame       multi-compound abundance table
+
+Both use the same FG_SMARTS patterns as interaction_analyzer.py, keeping
+the FG profile consistent end-to-end (query compound ↔ BioLiP residue table).
+
+Legacy API (kept for backward compatibility, not used in main pipeline)
+-----------------------------------------------------------------------
+detect(compounds) → pd.DataFrame  RDKit fr_* fragment counters
+"""
 
 import pandas as pd
 from rdkit import Chem, RDLogger
@@ -11,6 +24,73 @@ from constants.fg_smarts import FG_SMARTS
 RDLogger.DisableLog("rdApp.error")
 RDLogger.DisableLog("rdApp.warning")
 
+# Pre-compile SMARTS patterns once at import time
+_SMARTS_PATTERNS: dict[str, Chem.Mol] = {
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in FG_SMARTS.items()
+    if Chem.MolFromSmarts(smarts) is not None
+}
+
+
+# ── SMARTS-based detection (primary) ─────────────────────────────────────────
+
+def detect_smarts(smiles: str) -> list[str]:
+    """Detect functional groups in a single SMILES via SMARTS substructure matching.
+
+    Consistent with the FG × residue table built by interaction_analyzer.py —
+    uses the same FG_SMARTS patterns.
+
+    Args:
+        smiles: Input molecule as SMILES string.
+
+    Returns:
+        List of FG names (keys of FG_SMARTS) present in the molecule.
+        Empty list if SMILES is invalid or no FG matches.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return []
+    return [
+        name
+        for name, pattern in _SMARTS_PATTERNS.items()
+        if pattern is not None and mol.GetSubstructMatches(pattern)
+    ]
+
+
+def detect_smarts_table(compounds: dict[str, str]) -> pd.DataFrame:
+    """Build a FG abundance table for multiple compounds using SMARTS matching.
+
+    Each cell = number of non-overlapping substructure match sites in that
+    molecule (via GetSubstructMatches). Rows with all-zero counts are dropped.
+    Consistent with the FG × residue table built by interaction_analyzer.py.
+
+    Args:
+        compounds: {compound_name: smiles}
+
+    Returns:
+        DataFrame with fg_name index, one column per compound, integer counts.
+        Rows with all-zero counts are dropped.
+    """
+    rows: dict[str, dict[str, int]] = {}
+
+    for fg_name, pattern in _SMARTS_PATTERNS.items():
+        row: dict[str, int] = {}
+        for comp_name, smiles in compounds.items():
+            mol = Chem.MolFromSmiles(smiles)
+            row[comp_name] = len(mol.GetSubstructMatches(pattern)) if mol else 0
+        rows[fg_name] = row
+
+    df = pd.DataFrame(rows).T
+    df.index.name = "fg_name"
+
+    # Drop functional groups that appear in no compound
+    df = df[(df != 0).any(axis=1)]
+
+    return df
+
+
+# ── Legacy API: RDKit fr_* fragment counters ──────────────────────────────────
+
 # All callable fr_* functions from RDKit Fragments module
 _FG_FUNCTIONS: dict[str, object] = {
     name: func
@@ -20,7 +100,10 @@ _FG_FUNCTIONS: dict[str, object] = {
 
 
 def detect(compounds: dict[str, str]) -> pd.DataFrame:
-    """Detect functional groups across a set of compounds.
+    """[Legacy] Detect functional groups using RDKit fr_* fragment counters.
+
+    Kept for backward compatibility. New code should use detect_smarts_table()
+    which uses FG_SMARTS and is consistent with the BioLiP residue table.
 
     Args:
         compounds: {compound_name: smiles}
@@ -49,36 +132,3 @@ def detect(compounds: dict[str, str]) -> pd.DataFrame:
     df.insert(0, "functional_group", df.index.map(lambda x: FG_NAMES.get(x, x)))
 
     return df
-
-
-# ── SMARTS-based detection (used by target_predictor) ─────────────────────────
-
-# Pre-compile SMARTS patterns once at import time
-_SMARTS_PATTERNS: dict[str, object] = {
-    name: Chem.MolFromSmarts(smarts)
-    for name, smarts in FG_SMARTS.items()
-    if Chem.MolFromSmarts(smarts) is not None
-}
-
-
-def detect_smarts(smiles: str) -> list[str]:
-    """Detect functional groups in a SMILES using SMARTS substructure matching.
-
-    Returns a list of FG names (keys of FG_SMARTS) present in the molecule.
-    Uses substructure matching rather than RDKit fragment counters — consistent
-    with the FG × residue table built by interaction_analyzer.py.
-
-    Args:
-        smiles: Input molecule as SMILES string.
-
-    Returns:
-        List of matching FG names from FG_SMARTS. Empty list if SMILES is invalid.
-    """
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        return []
-    return [
-        name
-        for name, pattern in _SMARTS_PATTERNS.items()
-        if pattern is not None and mol.GetSubstructMatches(pattern)
-    ]
