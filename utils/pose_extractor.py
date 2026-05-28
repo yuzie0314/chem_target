@@ -509,16 +509,17 @@ def extract_pose_records(
         return []
 
     # ── Ligand heavy-atom coordinates ─────────────────────────────────────────
+    # Explicitly convert numpy.float32 → Python float so json.dump works.
     lig_coords: list[list[float]] = [
-        list(atom.coord)
+        [float(x) for x in atom.coord]
         for atom in lig_res.get_atoms()
         if atom.element and atom.element.upper() != "H"
     ]
     if not lig_coords:
         return []
 
-    lig_centroid = [
-        sum(c[i] for c in lig_coords) / len(lig_coords)
+    lig_centroid: list[float] = [
+        float(sum(c[i] for c in lig_coords) / len(lig_coords))
         for i in range(3)
     ]
 
@@ -556,19 +557,19 @@ def extract_pose_records(
         if protein_res is None:
             continue
 
-        # Cα coordinate
+        # Cα coordinate (float conversion for JSON serialization)
         ca_coord: list[float] | None = None
         if "CA" in protein_res:
-            ca_coord = list(protein_res["CA"].coord)
+            ca_coord = [float(x) for x in protein_res["CA"].coord]
 
         # Cα → ligand centroid distance
         ca_lig_dist: float | None = (
-            _vec_dist(ca_coord, lig_centroid) if ca_coord else None
+            float(_vec_dist(ca_coord, lig_centroid)) if ca_coord else None
         )
 
         # Minimum atom-to-atom distance (any protein residue atom ↔ any lig heavy atom)
-        res_coords = [
-            list(a.coord)
+        res_coords: list[list[float]] = [
+            [float(x) for x in a.coord]
             for a in protein_res.get_atoms()
             if a.element and a.element.upper() != "H"
         ]
@@ -603,10 +604,27 @@ def extract_pose_records(
 
 # ── Output 1: residue_3d_poses.json ──────────────────────────────────────────
 
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that converts numpy scalar types to Python natives."""
+    def default(self, obj: object) -> object:
+        try:
+            import numpy as _np  # noqa: PLC0415
+            if isinstance(obj, _np.floating):
+                return float(obj)
+            if isinstance(obj, _np.integer):
+                return int(obj)
+            if isinstance(obj, _np.ndarray):
+                return obj.tolist()
+        except ImportError:
+            pass
+        return super().default(obj)
+
+
 def save_residue_3d_poses(all_records: dict[str, dict[str, list[PoseRecord]]]) -> None:
     """Save {fg: {residue: [PoseRecord, ...]}} to db/residue_3d_poses.json.
 
     Each PoseRecord is serialised as a plain dict (no dataclass-specific types).
+    Uses _SafeEncoder to handle any residual numpy scalar types from BioPython.
     """
     out: dict = {}
     for fg, res_dict in all_records.items():
@@ -615,7 +633,7 @@ def save_residue_3d_poses(all_records: dict[str, dict[str, list[PoseRecord]]]) -
             out[fg][res] = [asdict(r) for r in records]
 
     with open(POSES_JSON, "w", encoding="utf-8") as f:
-        json.dump(out, f, indent=2, ensure_ascii=False)
+        json.dump(out, f, indent=2, ensure_ascii=False, cls=_SafeEncoder)
     print(f"  Saved: {POSES_JSON}")
 
 
@@ -785,7 +803,7 @@ def save_pharmacophore_stats(
             }
 
     with open(STATS_JSON, "w", encoding="utf-8") as f:
-        json.dump(stats, f, indent=2, ensure_ascii=False)
+        json.dump(stats, f, indent=2, ensure_ascii=False, cls=_SafeEncoder)
     print(f"  Saved: {STATS_JSON}")
 
 
