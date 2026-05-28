@@ -7,9 +7,24 @@ Workflow
    rows  = 20 standard amino acids (1-letter code)
    cols  = FG names from FG_SMARTS
    value = binding-event count from BioLiP 2.0
-3. Score each residue by summing counts for all detected FGs.
-4. Vote target classes using known_target_classes from db/fg_database.json.
+3. Score each residue by **z-score-normalising** each FG column then summing
+   (prevents high-frequency generic FGs from drowning specific pharmacophores).
+4. Vote target classes using known_target_classes from db/fg_database.json,
+   weighted by **IDF** (specific targets ranked above generic labels).
 5. Return a structured result dict + a formatted text report.
+
+Scoring details
+---------------
+Residue scoring (z-score normalisation, default on):
+    For each detected FG, normalise its column to mean=0 / std=1 across all 20 AAs
+    before summing.  This ensures that a highly represented FG like Hydroxyl
+    (>11 000 GLY events) does not completely overshadow Steroid (~1 400 PHE events).
+
+Target class scoring (IDF weighting, default on):
+    weight(tc) = log( N_all_FGs / N_FGs_that_annotate_this_tc )
+    High weight → target class is specific (few FGs annotate it, e.g. VKORC1, tubulin).
+    Low weight  → target class is generic (many FGs annotate it, e.g. kinase, GPCR).
+    final_score = vote_count × weight
 
 Prerequisites
 -------------
@@ -32,6 +47,7 @@ Standalone usage
 import json
 import sys
 from collections import Counter, defaultdict
+from math import log
 from pathlib import Path
 
 import pandas as pd
@@ -93,24 +109,53 @@ def load_fg_db(path: Path = FG_DB_PATH) -> dict:
 
 # ── Scoring helpers ────────────────────────────────────────────────────────────
 
+def _compute_target_idf(fg_db: dict) -> dict[str, float]:
+    """Compute inverse-document-frequency weights for target classes.
+
+    IDF(tc) = log( N_all_FGs / N_FGs_that_annotate_tc )
+
+    Interpretation:
+        High IDF → target is specific (few FGs list it, e.g. VKORC1, tubulin).
+        Low IDF  → target is generic (many FGs list it, e.g. kinase, GPCR).
+
+    Args:
+        fg_db: functional_groups dict loaded from fg_database.json.
+
+    Returns:
+        Dict mapping target class name → IDF weight (float).
+    """
+    n_fgs = len(fg_db)
+    if n_fgs == 0:
+        return {}
+    tc_count: Counter = Counter()
+    for entry in fg_db.values():
+        for tc in entry.get("known_target_classes", []):
+            tc_count[tc] += 1
+    return {tc: log(n_fgs / count) for tc, count in tc_count.items()}
+
+
 def predict_residues(
     fgs_detected: list[str],
     table: pd.DataFrame,
     top_n: int = 20,
+    normalize: bool = True,
 ) -> pd.DataFrame:
     """Score residues by summing BioLiP co-occurrence counts for detected FGs.
 
-    For each amino acid residue, the score is:
-        sum( table[residue][fg]  for fg in fgs_detected  if fg in table.columns )
+    When *normalize* is True (default), each FG column is z-score-normalised
+    (column mean → 0, column std → 1) before summing.  This prevents dominant
+    FGs (e.g. Hydroxyl: ~11 000 GLY hits) from overshadowing structurally
+    specific FGs (e.g. Steroid: ~1 400 PHE hits) when a compound contains both.
 
     Args:
         fgs_detected: FG names matching FG_SMARTS keys.
         table:        Numeric FG × residue table (residue_name column excluded).
-        top_n:        Return only the top-N residues by score (0 = all).
+        top_n:        Return only the top-N residues by score (0 = return all).
+        normalize:    Apply per-FG z-score normalisation before summing.
 
     Returns:
         DataFrame with columns: residue_name | score | contributing_fgs
-        Index: residue (1-letter AA code).  Rows with score == 0 are dropped.
+        Index: residue (1-letter AA code).  Rows with score ≤ 0 are dropped.
     """
     valid_fgs = [fg for fg in fgs_detected if fg in table.columns]
 
@@ -119,7 +164,15 @@ def predict_residues(
             columns=["residue_name", "score", "contributing_fgs"]
         )
 
-    score_series = table[valid_fgs].sum(axis=1)
+    sub = table[valid_fgs].astype(float)
+
+    if normalize:
+        # Per-column z-score.  Avoid division by zero for all-zero FG columns.
+        col_std = sub.std()
+        col_std[col_std == 0] = 1.0
+        sub = (sub - sub.mean()) / col_std
+
+    score_series = sub.sum(axis=1)
 
     result = pd.DataFrame({
         "residue_name": score_series.index.map(lambda aa: AA_1TO3.get(aa, aa)),
@@ -138,22 +191,32 @@ def predict_residues(
 def predict_target_classes(
     fgs_detected: list[str],
     fg_db: dict,
+    use_idf: bool = True,
 ) -> pd.DataFrame:
     """Vote target classes using known_target_classes from fg_database.json.
 
-    Each detected FG contributes 1 vote to every target class listed in its
-    known_target_classes entry.  Results are sorted by vote count descending.
+    Each detected FG casts 1 vote to every target class it annotates.
+    When *use_idf* is True (default), votes are multiplied by IDF weight:
+
+        score(tc) = vote_count × log( N_all_FGs / N_FGs_annotating_tc )
+
+    This gives higher final scores to specific targets (e.g. VKORC1, tubulin,
+    antimalarial target) than to generic labels (e.g. kinase, GPCR) even when
+    the generic label accumulates more raw votes.
 
     Args:
         fgs_detected: FG names matching FG_SMARTS keys.
         fg_db:        Loaded functional_groups dict from fg_database.json.
+        use_idf:      Apply IDF weighting (default True).
 
     Returns:
-        DataFrame with columns: target_class | votes | evidence_fgs
-        Empty DataFrame if no annotations are found.
+        DataFrame with columns: target_class | score | votes | evidence_fgs
+        Sorted by score descending.  Empty DataFrame if no annotations found.
     """
     votes: Counter = Counter()
     evidence: dict[str, list[str]] = defaultdict(list)
+
+    idf: dict[str, float] = _compute_target_idf(fg_db) if use_idf else {}
 
     for fg in fgs_detected:
         entry = fg_db.get(fg, {})
@@ -162,17 +225,26 @@ def predict_target_classes(
             evidence[tc].append(fg)
 
     if not votes:
-        return pd.DataFrame(columns=["target_class", "votes", "evidence_fgs"])
+        return pd.DataFrame(
+            columns=["target_class", "score", "votes", "evidence_fgs"]
+        )
 
-    rows = [
-        {
+    rows = []
+    for tc, count in votes.most_common():
+        weight = idf.get(tc, 1.0) if use_idf else 1.0
+        rows.append({
             "target_class": tc,
+            "score": round(count * weight, 3),
             "votes": count,
             "evidence_fgs": ", ".join(evidence[tc]),
-        }
-        for tc, count in votes.most_common()
-    ]
-    return pd.DataFrame(rows)
+        })
+
+    df = (
+        pd.DataFrame(rows)
+        .sort_values("score", ascending=False)
+        .reset_index(drop=True)
+    )
+    return df
 
 
 # ── Main prediction pipeline ───────────────────────────────────────────────────
@@ -180,6 +252,8 @@ def predict_target_classes(
 def predict(
     smiles: str,
     top_residues: int = 10,
+    normalize: bool = True,
+    use_idf: bool = True,
     table_path: Path = TABLE_PATH,
     db_path: Path = FG_DB_PATH,
 ) -> dict:
@@ -188,16 +262,18 @@ def predict(
     Args:
         smiles:       Input molecule as SMILES.
         top_residues: How many top-scoring residues to return.
+        normalize:    Z-score-normalise residue scores (default True).
+        use_idf:      IDF-weight target class votes (default True).
         table_path:   Path to db/fg_residue_table.csv.
         db_path:      Path to db/fg_database.json.
 
     Returns:
         dict with keys:
-          smiles           (str)
-          fgs_detected     (list[str])
-          residue_scores   (pd.DataFrame)  — residue | residue_name | score | contributing_fgs
-          target_class_votes (pd.DataFrame) — target_class | votes | evidence_fgs
-          warning          (str | None)    — set on SMILES parse failure or missing table
+          smiles             (str)
+          fgs_detected       (list[str])
+          residue_scores     (pd.DataFrame)  — residue | residue_name | score | contributing_fgs
+          target_class_votes (pd.DataFrame)  — target_class | score | votes | evidence_fgs
+          warning            (str | None)    — set on SMILES parse failure or missing table
     """
     result: dict = {
         "smiles": smiles,
@@ -224,13 +300,17 @@ def predict(
         result["warning"] = str(exc)
         return result
 
-    # 3. Score residues (drop residue_name label column before summing)
+    # 3. Score residues (drop residue_name label column before scoring)
     numeric_table = table.drop(columns=["residue_name"], errors="ignore")
-    result["residue_scores"] = predict_residues(fgs, numeric_table, top_n=top_residues)
+    result["residue_scores"] = predict_residues(
+        fgs, numeric_table, top_n=top_residues, normalize=normalize
+    )
 
-    # 4. Vote target classes
+    # 4. Vote + weight target classes
     fg_db = load_fg_db(db_path)
-    result["target_class_votes"] = predict_target_classes(fgs, fg_db)
+    result["target_class_votes"] = predict_target_classes(
+        fgs, fg_db, use_idf=use_idf
+    )
 
     return result
 
@@ -265,7 +345,7 @@ def format_report(pred: dict, compound_name: str = "") -> str:
         lines.append(f"    • {fg}")
 
     # Residue scores
-    lines.append("\n  Top binding residues (BioLiP FG×residue co-occurrence):")
+    lines.append("\n  Top binding residues (z-score-normalised BioLiP FG×residue):")
     rs = pred["residue_scores"]
     if rs.empty:
         lines.append("    (no residue matches in table)")
@@ -274,20 +354,25 @@ def format_report(pred: dict, compound_name: str = "") -> str:
         lines.append(f"    {'---':>4}  {'----':>5}  {'-----':>8}")
         for aa, row in rs.iterrows():
             lines.append(
-                f"    {aa:>4}  {row['residue_name']:>5}  {int(row['score']):>8,}"
+                f"    {aa:>4}  {row['residue_name']:>5}  {row['score']:>8.3f}"
             )
 
-    # Target class votes
-    lines.append("\n  Predicted target classes (FG → known_target_classes votes):")
+    # Target class votes (IDF-weighted)
+    lines.append("\n  Predicted target classes (IDF-weighted FG votes):")
     tc = pred["target_class_votes"]
     if tc.empty:
         lines.append("    (no annotations in fg_database.json for detected FGs)")
     else:
-        lines.append(f"    {'Target class':<28}  {'Votes':>5}  Evidence FGs")
-        lines.append(f"    {'-'*28}  {'-----':>5}  {'-'*30}")
+        lines.append(
+            f"    {'Target class':<30}  {'Score':>6}  {'Votes':>5}  Evidence FGs"
+        )
+        lines.append(
+            f"    {'-'*30}  {'------':>6}  {'-----':>5}  {'-'*30}"
+        )
         for _, row in tc.iterrows():
             lines.append(
-                f"    {row['target_class']:<28}  {row['votes']:>5}  {row['evidence_fgs']}"
+                f"    {row['target_class']:<30}  {row['score']:>6.2f}"
+                f"  {int(row['votes']):>5}  {row['evidence_fgs']}"
             )
 
     lines.append("")
@@ -307,6 +392,10 @@ def main() -> None:
     parser.add_argument("--name",  default="",  help="Compound display name")
     parser.add_argument("--top",   type=int, default=10,
                         help="Number of top residues to show (default: 10)")
+    parser.add_argument("--no-normalize", action="store_true",
+                        help="Disable z-score normalisation of residue scores")
+    parser.add_argument("--no-idf", action="store_true",
+                        help="Disable IDF weighting of target class votes")
     parser.add_argument("--table", default=str(TABLE_PATH),
                         help="Path to fg_residue_table.csv")
     parser.add_argument("--db",    default=str(FG_DB_PATH),
@@ -316,6 +405,8 @@ def main() -> None:
     pred = predict(
         args.smiles,
         top_residues=args.top,
+        normalize=not args.no_normalize,
+        use_idf=not args.no_idf,
         table_path=Path(args.table),
         db_path=Path(args.db),
     )

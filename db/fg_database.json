@@ -14,7 +14,9 @@
         "transporter",
         "nuclear receptor",
         "carbonic anhydrase",
-        "fatty acid binding protein"
+        "fatty acid binding protein",
+        "COX",
+        "ACE inhibitor"
       ],
       "source": "chebi"
     },
@@ -27,7 +29,9 @@
       "known_target_classes": [
         "esterase",
         "lipase",
-        "acetylcholinesterase"
+        "acetylcholinesterase",
+        "serine hydrolase",
+        "COX"
       ],
       "source": "chebi"
     },
@@ -55,7 +59,9 @@
         "lipase",
         "HDAC",
         "nuclear receptor",
-        "lactone hydrolase"
+        "lactone hydrolase",
+        "topoisomerase I",
+        "proteasome"
       ],
       "source": "manual"
     },
@@ -130,7 +136,9 @@
         "MAO",
         "metalloenzyme",
         "estrogen receptor",
-        "lipoxygenase"
+        "lipoxygenase",
+        "dopamine receptor",
+        "DOPA decarboxylase"
       ],
       "source": "chebi"
     },
@@ -228,7 +236,9 @@
         "IDO",
         "sigma receptor",
         "tryptophan hydroxylase",
-        "GPCR"
+        "GPCR",
+        "tubulin",
+        "BACE1"
       ],
       "source": "manual"
     },
@@ -296,7 +306,9 @@
         "kinase",
         "GPCR",
         "nuclear receptor",
-        "protease"
+        "protease",
+        "COX",
+        "tubulin"
       ],
       "source": "chebi"
     },
@@ -311,7 +323,8 @@
         "cytochrome P450",
         "serine protease",
         "anticoagulant target",
-        "voltage-gated channel"
+        "voltage-gated channel",
+        "VKORC1"
       ],
       "source": "manual"
     },
