@@ -43,7 +43,8 @@ RDLogger.DisableLog("rdApp.warning")
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from constants.fg_smarts import FG_SMARTS  # noqa: E402
+from constants.fg_smarts import FG_SMARTS              # noqa: E402
+from utils.fg_detector import _PYTHON_DETECTORS        # noqa: E402
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BIOLIP_NR_URL    = "https://zhanggroup.org/BioLiP/download/BioLiP_nr.txt.gz"
@@ -299,14 +300,24 @@ _fg_patterns: dict[str, object] = {
 
 
 def detect_fgs(smiles: str) -> list[str]:
-    """Return list of FG names (from FG_SMARTS) present in the given SMILES."""
+    """Return list of FG names present in the given SMILES.
+
+    Combines SMARTS-based detection (FG_SMARTS) with Python-based detectors
+    (_PYTHON_DETECTORS, e.g. Steroid) so that the resulting FG set is
+    consistent with utils/fg_detector.detect_smarts().
+    """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return []
-    return [
+    results = [
         name for name, pattern in _fg_patterns.items()
         if mol.GetSubstructMatches(pattern)
     ]
+    # Python-based detectors (e.g. Steroid — cannot be expressed as SMARTS)
+    for fg_name, detector in _PYTHON_DETECTORS.items():
+        if detector(mol):
+            results.append(fg_name)
+    return results
 
 
 # ── Table builder ──────────────────────────────────────────────────────────────
@@ -321,7 +332,8 @@ def build_interaction_table(entries: list[dict]) -> pd.DataFrame:
         DataFrame with rows = amino acid (1-letter), cols = FG name.
     """
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    fg_names = list(FG_SMARTS.keys())
+    # Include Python-detected FGs (e.g. Steroid) alongside SMARTS-based ones
+    fg_names = list(FG_SMARTS.keys()) + list(_PYTHON_DETECTORS.keys())
 
     total = len(entries)
     resolved = 0

@@ -1,7 +1,7 @@
 {
   "last_updated": "2026-05-28",
   "sources": ["chebi", "pubchem", "manual"],
-  "note": "Keys must exactly match FG_SMARTS keys in constants/fg_smarts.py. Rebuild db/fg_residue_table.csv after any key change.",
+  "note": "Keys must exactly match FG_SMARTS keys in constants/fg_smarts.py (plus 'Steroid' which uses Python detection). Rebuild db/fg_residue_table.csv after any key change.",
   "functional_groups": {
 
     "Carboxylic acid": {
@@ -20,10 +20,10 @@
     },
 
     "Ester": {
-      "smarts": "[#6][CX3](=O)[OX2H0][#6]",
+      "smarts": "[#6][CX3;!R](=O)[OX2H0;!R][#6]",
       "pubchem_cid": 165217,
       "chebi_id": "CHEBI:35701",
-      "description": "RC(=O)OR' group. H-bond acceptor only; metabolically labile. Hydrolysed by esterases and lipases; prodrug strategy.",
+      "description": "Acyclic RC(=O)OR' group (ring esters are captured by 'Lactone'). H-bond acceptor only; metabolically labile. Hydrolysed by esterases and lipases; prodrug strategy.",
       "known_target_classes": [
         "esterase",
         "lipase",
@@ -43,6 +43,21 @@
         "amide hydrolase"
       ],
       "source": "chebi"
+    },
+
+    "Lactone": {
+      "smarts": "[#6X3;R](=O)[#8X2;R]",
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:25000",
+      "description": "Cyclic ester (-C(=O)-O- in ring). Includes gamma-lactones (5-membered), delta-lactones (6-membered), and aromatic lactones (coumarins). Superset of Coumarin and Macrolide. Hydrolysed by lactonases and esterases; HDAC inhibitors often contain a hydroxamic acid or lactone zinc-binding group; some nuclear receptor ligands are lactones.",
+      "known_target_classes": [
+        "esterase",
+        "lipase",
+        "HDAC",
+        "nuclear receptor",
+        "lactone hydrolase"
+      ],
+      "source": "manual"
     },
 
     "Ketone": {
@@ -120,6 +135,19 @@
       "source": "chebi"
     },
 
+    "Methylenedioxy": {
+      "smarts": "c1ccc2c(c1)OCO2",
+      "pubchem_cid": 10679,
+      "chebi_id": null,
+      "description": "-OCH2O- bridge across two adjacent aromatic carbons (1,3-benzodioxole motif). Present in piperine, safrole, methylenedioxymethamphetamine. The methylene C is a site for CYP450 carbene intermediate formation; mechanism-based inhibitor of CYP450 and MAO.",
+      "known_target_classes": [
+        "cytochrome P450",
+        "MAO",
+        "drug metabolism enzyme"
+      ],
+      "source": "manual"
+    },
+
     "Ether": {
       "smarts": "[OX2;!$(O=*);!$([OX2H]);!$(OC=O)]([#6])[#6]",
       "pubchem_cid": 3283,
@@ -187,6 +215,22 @@
         "metalloprotease"
       ],
       "source": "chebi"
+    },
+
+    "Indole": {
+      "smarts": "c1ccc2[nH]ccc2c1",
+      "pubchem_cid": 767,
+      "chebi_id": "CHEBI:16881",
+      "description": "Bicyclic aromatic scaffold: pyrrole ring fused to benzene. Defining pharmacophore of tryptamine alkaloids (serotonin, melatonin, psilocybin, vincristine). Indole NH is an H-bond donor; the pi-system engages Trp/Phe residues. Partially overlaps Phenyl ring (benzene portion still detected).",
+      "known_target_classes": [
+        "serotonin receptor",
+        "MAO",
+        "IDO",
+        "sigma receptor",
+        "tryptophan hydroxylase",
+        "GPCR"
+      ],
+      "source": "manual"
     },
 
     "Nitrile": {
@@ -257,6 +301,53 @@
       "source": "chebi"
     },
 
+    "Coumarin": {
+      "smarts": "O=c1ccc2ccccc2o1",
+      "pubchem_cid": 323,
+      "chebi_id": "CHEBI:28794",
+      "description": "2H-1-Benzopyran-2-one: benzene ring fused to a 6-membered aromatic lactone with the C=O at C2. Key scaffold in anticoagulants (warfarin), MAO inhibitors (umbelliferone), and CYP450-metabolised phytochemicals. Subset of Lactone; overlaps Phenyl ring (benzene portion).",
+      "known_target_classes": [
+        "MAO",
+        "cytochrome P450",
+        "serine protease",
+        "anticoagulant target",
+        "voltage-gated channel"
+      ],
+      "source": "manual"
+    },
+
+    "Chromone": {
+      "smarts": "O=c1ccoc2ccccc12",
+      "pubchem_cid": 68671,
+      "chebi_id": "CHEBI:28499",
+      "description": "4H-1-Benzopyran-4-one: benzene ring fused to a 6-membered ring with C=O at C4 and ring O at C1. Backbone of flavone, flavonol, and isoflavone scaffolds (quercetin, kaempferol, genistein). NOT a lactone (C=O is a ring ketone; ring O is an ether). Target class: COX, kinase, estrogen receptor, tyrosine kinase.",
+      "known_target_classes": [
+        "COX",
+        "kinase",
+        "estrogen receptor",
+        "tyrosine kinase",
+        "aromatase"
+      ],
+      "source": "manual"
+    },
+
+    "Steroid": {
+      "smarts": null,
+      "pubchem_cid": null,
+      "chebi_id": "CHEBI:35341",
+      "description": "Tetracyclic 6-6-6-5 fused ring scaffold (cyclopentanophenanthrene). A-B-C rings are six-membered, D ring is five-membered, all carbon. Detected via Python function _detect_steroid_core (SMARTS not used — see utils/fg_detector.py). Present in testosterone, cholesterol, cortisol, estradiol, bile acids.",
+      "known_target_classes": [
+        "nuclear receptor",
+        "estrogen receptor",
+        "androgen receptor",
+        "glucocorticoid receptor",
+        "progesterone receptor",
+        "cytochrome P450",
+        "steroid dehydrogenase"
+      ],
+      "source": "manual"
+    },
+
     "Halogen": {
       "smarts": "[F,Cl,Br,I]",
       "pubchem_cid": null,
@@ -285,6 +376,19 @@
       "source": "chebi"
     },
 
+    "Endoperoxide": {
+      "smarts": "[OX2r][OX2r]",
+      "pubchem_cid": null,
+      "chebi_id": null,
+      "description": "O-O bond within a ring (cyclic peroxide). Pharmacophore of artemisinin-class antimalarials; the endoperoxide bridge reacts with heme Fe(II) to generate carbon-centred radicals that alkylate parasite proteins. Distinct from acyclic organic peroxides and from the epoxide pattern.",
+      "known_target_classes": [
+        "antimalarial target",
+        "oxidoreductase",
+        "heme-dependent enzyme"
+      ],
+      "source": "manual"
+    },
+
     "α,β-unsat. carbonyl": {
       "smarts": "[CX3](=O)C=C",
       "pubchem_cid": null,
@@ -296,6 +400,21 @@
         "Nrf2 pathway",
         "kinase",
         "NF-kB pathway"
+      ],
+      "source": "manual"
+    },
+
+    "Macrolide": {
+      "smarts": "[CX3;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R](=O)[OX2;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R]",
+      "pubchem_cid": null,
+      "chebi_id": null,
+      "description": "Lactone in a macrocyclic ring of 12 or more atoms. Subset of Lactone; excludes all rings up to 11-membered. Pharmacophore class of erythromycin (14-membered, ribosome 50S), rapamycin/sirolimus (31-membered, mTOR complex), tacrolimus/FK506 (23-membered, calcineurin via FKBP12). Macrolides bind ribosomes (antibacterial), mTOR complex (immunosuppressant/anticancer), and calcineurin (immunosuppressant).",
+      "known_target_classes": [
+        "mTOR",
+        "calcineurin",
+        "ribosome",
+        "immunophilin",
+        "FKBP"
       ],
       "source": "manual"
     }
