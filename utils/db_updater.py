@@ -313,6 +313,46 @@ def save_database(db: dict) -> None:
     print(f"\nSaved: {DB_PATH}")
 
 
+# ── Alias validation ──────────────────────────────────────────────────────────
+
+def validate_aliases(db: dict | None = None) -> int:
+    """Check that every known_target_class in fg_database.json is in target_class_aliases.json.
+
+    Returns the number of unmapped class names found (0 = all clear).
+
+    Called automatically after build_database() and also via --validate-aliases flag.
+    """
+    alias_path = _ROOT / "db" / "target_class_aliases.json"
+    if not alias_path.exists():
+        print("WARNING: db/target_class_aliases.json not found — skipping alias validation.")
+        return 0
+
+    alias_data  = json.loads(alias_path.read_text(encoding="utf-8"))
+    known_keys  = set(alias_data.get("aliases", {}).keys())
+
+    if db is None:
+        if not DB_PATH.exists():
+            print("WARNING: fg_database.json not found — skipping alias validation.")
+            return 0
+        db = json.loads(DB_PATH.read_text(encoding="utf-8"))
+
+    unmapped: list[tuple[str, str]] = []   # (fg_name, class_name)
+    for fg_name, entry in db.get("functional_groups", {}).items():
+        for tc in entry.get("known_target_classes", []):
+            if tc not in known_keys:
+                unmapped.append((fg_name, tc))
+
+    if unmapped:
+        print(f"\n⚠  ALIAS VALIDATION: {len(unmapped)} unmapped target class(es) found.")
+        print("   Add these to db/target_class_aliases.json before running benchmark:")
+        for fg, tc in sorted(unmapped, key=lambda x: x[1]):
+            print(f'     "{tc}": null,   # from {fg}')
+    else:
+        print("✓  Alias validation passed — all target classes are mapped.")
+
+    return len(unmapped)
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -332,7 +372,17 @@ def main() -> None:
         action="store_true",
         help="Print result without saving",
     )
+    parser.add_argument(
+        "--validate-aliases",
+        action="store_true",
+        help="Check that all known_target_classes in fg_database.json are in "
+             "db/target_class_aliases.json. Prints warnings for any gaps.",
+    )
     args = parser.parse_args()
+
+    if args.validate_aliases:
+        n = validate_aliases()
+        sys.exit(0 if n == 0 else 1)
 
     target_fgs = (
         [s.strip() for s in args.fg_only.split(",")]
@@ -348,6 +398,9 @@ def main() -> None:
         print(json.dumps(db, indent=2, ensure_ascii=False))
     else:
         save_database(db)
+        # Auto-validate aliases after every full update
+        print("\nValidating alias table ...")
+        validate_aliases(db)
         print("Done.")
 
 

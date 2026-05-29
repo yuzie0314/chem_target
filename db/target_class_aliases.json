@@ -1,0 +1,113 @@
+{
+  "_doc": "Maps every known_target_class string from fg_database.json → canonical benchmark class label used in TARGET_CLASS_MAP (run_benchmark.py). Null = no benchmark class (not tested). Update manually when fg_database.json adds new known_target_classes; run 'python utils/db_updater.py --validate-aliases' to find gaps.",
+  "last_updated": "2026-05-29",
+
+  "aliases": {
+
+    "COX":                          "COX",
+    "ACE inhibitor":                null,
+
+    "kinase":                       "kinase",
+    "tyrosine kinase":              "kinase",
+    "histidine kinase":             "kinase",
+
+    "GPCR":                         "GPCR",
+    "serotonin receptor":           "GPCR",
+    "dopamine receptor":            "GPCR",
+    "histamine receptor":           "GPCR",
+    "nicotinic receptor":           "GPCR",
+
+    "serine protease":              "serine protease",
+    "serine hydrolase":             "serine protease",
+    "amide hydrolase":              "serine protease",
+    "protease":                     null,
+
+    "cysteine protease":            "cysteine protease",
+
+    "nuclear receptor":             "nuclear receptor",
+    "androgen receptor":            "nuclear receptor",
+    "estrogen receptor":            "nuclear receptor",
+    "glucocorticoid receptor":      "nuclear receptor",
+    "progesterone receptor":        "nuclear receptor",
+    "thyroid hormone receptor":     "nuclear receptor",
+
+    "MAO":                          "MAO",
+    "amine oxidase":                "MAO",
+
+    "HDAC":                         "HDAC",
+
+    "adenosine receptor":           "adenosine receptor",
+
+    "carbonic anhydrase":           "carbonic anhydrase",
+
+    "cytochrome P450":              "CYP450",
+    "CYP1A2":                       "CYP450",
+    "CYP3A4":                       "CYP450",
+    "drug metabolism enzyme":       "CYP450",
+    "aromatase":                    "CYP450",
+    "steroid enzyme":               null,
+
+    "PDE":                          "PDE",
+
+    "mTOR":                         "mTOR",
+
+    "tubulin":                      "tubulin",
+
+    "VKORC1":                       "VKORC1",
+    "anticoagulant target":         "VKORC1",
+
+    "topoisomerase I":              "topoisomerase",
+
+    "ribosome":                     "ribosome",
+
+    "xanthine oxidase":             "xanthine oxidase",
+
+    "COMT":                         "COMT",
+
+    "transporter":                  null,
+    "ion channel":                  null,
+    "voltage-gated channel":        null,
+    "phosphatase":                  null,
+    "oxidoreductase":               null,
+    "metalloenzyme":                null,
+    "metalloprotease":              null,
+    "esterase":                     null,
+    "lipase":                       null,
+    "lactone hydrolase":            null,
+    "epoxide hydrolase":            null,
+    "nitrile hydratase":            null,
+    "nitroreductase":               null,
+    "halogenase":                   null,
+    "glucosyltransferase":          null,
+    "glutathione transferase":      null,
+    "tyrosinase":                   null,
+    "thioredoxin":                  null,
+    "immunophilin":                 null,
+    "calcineurin":                  null,
+    "FKBP":                         null,
+    "sigma receptor":               null,
+    "IDO":                          null,
+    "BACE1":                        null,
+    "DOPA decarboxylase":           null,
+    "tryptophan hydroxylase":       null,
+    "adenylyl cyclase":             null,
+    "purine nucleoside phosphorylase": null,
+    "DNA polymerase":               null,
+    "proteasome":                   null,
+    "steroid dehydrogenase":        null,
+    "17beta-HSD":                   null,
+    "aldehyde dehydrogenase":       null,
+    "alcohol dehydrogenase":        null,
+    "aldose reductase":             null,
+    "lipoxygenase":                 null,
+    "cholinesterase":               null,
+    "acetylcholinesterase":         null,
+    "fatty acid binding protein":   null,
+    "dihydropteroate synthase":     null,
+    "heme-dependent enzyme":        null,
+    "antimalarial target":          null,
+    "NF-kB pathway":                null,
+    "Nrf2 pathway":                 null,
+    "fatty acid binding protein":   null
+  }
+}

@@ -54,7 +54,7 @@ import csv
 import json
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
@@ -109,6 +109,34 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
 _CURATED_PER_CLASS = 20
 # pChEMBL cutoff (6.0 = 1 µM, 7.0 = 100 nM)
 _PCHEMBL_MIN = 6.0
+
+# ── Target class alias table ───────────────────────────────────────────────────
+# Maps every predicted class name (from fg_database.json known_target_classes)
+# → canonical benchmark class label (a key in TARGET_CLASS_MAP, or None).
+# Loaded once at import from db/target_class_aliases.json.
+
+def _load_aliases() -> dict[str, str | None]:
+    """Load predicted-class → benchmark-class mapping from db/target_class_aliases.json."""
+    alias_path = Path(__file__).parent / "db" / "target_class_aliases.json"
+    if not alias_path.exists():
+        return {}
+    data = json.loads(alias_path.read_text(encoding="utf-8"))
+    return data.get("aliases", {})
+
+_CLASS_ALIASES: dict[str, str | None] = _load_aliases()
+
+
+def _map_predicted_class(predicted: str) -> str | None:
+    """Return the canonical benchmark class label for a predicted class name.
+
+    Returns None if the predicted class has no benchmark equivalent.
+    Falls back to the predicted string itself if not in aliases
+    (so exact-match still works when alias table is incomplete).
+    """
+    if predicted in _CLASS_ALIASES:
+        return _CLASS_ALIASES[predicted]
+    # Not in alias table — use as-is (handles exact matches to TARGET_CLASS_MAP keys)
+    return predicted
 
 
 # ── Helpers: ChEMBL API ────────────────────────────────────────────────────────
@@ -408,9 +436,10 @@ def run_predictions(
             v1       = int(votes[0]) if votes else ""
             v2       = int(votes[1]) if len(votes) > 1 else ""
             v3       = int(votes[2]) if len(votes) > 2 else ""
-            # Rank of the true target class (1-based; 0 = not found)
+            # Map each predicted class → canonical benchmark label, then rank
+            mapped = [_map_predicted_class(c) for c in classes]
             true_rank = next(
-                (r + 1 for r, c in enumerate(classes) if c == true_c), 0
+                (r + 1 for r, m in enumerate(mapped) if m == true_c), 0
             )
             top1_hit = true_rank == 1
             top3_hit = 1 <= true_rank <= 3
