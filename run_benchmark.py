@@ -198,13 +198,18 @@ def download_curated(
     out_dir: Path,
     per_class: int = _CURATED_PER_CLASS,
     pchembl_min: float = _PCHEMBL_MIN,
+    no_sdf: bool = False,
 ) -> Path:
     """Download curated test compounds: top-N per target class.
+
+    Args:
+        no_sdf: If True, skip SDF download (SMILES only). ~35% faster.
 
     Returns path to compounds.csv.
     """
     sdf_dir = out_dir / "sdf"
-    sdf_dir.mkdir(parents=True, exist_ok=True)
+    if not no_sdf:
+        sdf_dir.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict] = []
     seen_chembl: set[str] = set()   # deduplicate across targets in same class
@@ -237,11 +242,14 @@ def download_curated(
                 if not mol_smiles:
                     continue   # skip if no SMILES at all
 
-                # Try SDF download
-                sdf_path = _fetch_sdf(cid, sdf_dir)
-                time.sleep(_REQUEST_DELAY)
-                sdf_smiles = _smiles_from_sdf(sdf_path) if sdf_path else None
-                has_sdf    = sdf_path is not None and sdf_path.exists()
+                # Try SDF download (skip if --no-sdf)
+                if no_sdf:
+                    sdf_path, sdf_smiles, has_sdf = None, None, False
+                else:
+                    sdf_path = _fetch_sdf(cid, sdf_dir)
+                    time.sleep(_REQUEST_DELAY)
+                    sdf_smiles = _smiles_from_sdf(sdf_path) if sdf_path else None
+                    has_sdf    = sdf_path is not None and sdf_path.exists()
 
                 # Use SDF-derived SMILES if available; ChEMBL SMILES as fallback
                 smiles_used = sdf_smiles or mol_smiles
@@ -273,8 +281,13 @@ def download_limit(
     out_dir: Path,
     limit: int = 2000,
     pchembl_min: float = _PCHEMBL_MIN,
+    no_sdf: bool = True,
 ) -> Path:
     """Download limit-test compounds: broad multi-class sample up to `limit`.
+
+    Args:
+        no_sdf: If True (default for limit mode), skip SDF download.
+                Uses only cached SDF files when False.
 
     Returns path to compounds.csv.
     """
@@ -309,13 +322,15 @@ def download_limit(
                 if not mol_smiles:
                     continue
 
-                # SDF: download only if not already cached (limit test: skip slow downloads)
-                sdf_path = (sdf_dir / f"{cid}.sdf") if (sdf_dir / f"{cid}.sdf").exists() else None
-                if sdf_path is None:
-                    # Quick attempt only (no SDF download in limit mode to save time)
-                    sdf_path = None
-                has_sdf   = sdf_path is not None and sdf_path.exists()
-                sdf_smi   = _smiles_from_sdf(sdf_path) if has_sdf else None
+                # SDF: use cached only; never download in limit mode unless --sdf passed
+                cached_sdf = sdf_dir / f"{cid}.sdf"
+                if not no_sdf and not cached_sdf.exists():
+                    sdf_path = _fetch_sdf(cid, sdf_dir)
+                    time.sleep(_REQUEST_DELAY)
+                else:
+                    sdf_path = cached_sdf if cached_sdf.exists() else None
+                has_sdf = sdf_path is not None and sdf_path.exists()
+                sdf_smi = _smiles_from_sdf(sdf_path) if has_sdf else None
 
                 seen_chembl.add(cid)
                 cls_count += 1
@@ -606,6 +621,11 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Total compound limit, limit mode (default: 2000)")
     dl.add_argument("--pchembl-min", type=float, default=_PCHEMBL_MIN,
                     help=f"Minimum pChEMBL value (default: {_PCHEMBL_MIN})")
+    dl.add_argument("--no-sdf", action="store_true", default=False,
+                    help="Skip SDF download; use SMILES only (~35%% faster). "
+                         "Default for limit mode; opt-in for curated mode.")
+    dl.add_argument("--sdf", dest="no_sdf", action="store_false",
+                    help="Force SDF download even in limit mode.")
 
     # run
     sub.add_parser("run", parents=[common],
@@ -621,6 +641,10 @@ def _build_parser() -> argparse.ArgumentParser:
     al.add_argument("--per-class", type=int, default=_CURATED_PER_CLASS)
     al.add_argument("--limit", type=int, default=2000)
     al.add_argument("--pchembl-min", type=float, default=_PCHEMBL_MIN)
+    al.add_argument("--no-sdf", action="store_true", default=False,
+                    help="Skip SDF download; use SMILES only (~35%% faster).")
+    al.add_argument("--sdf", dest="no_sdf", action="store_false",
+                    help="Force SDF download.")
 
     return p
 
@@ -641,17 +665,21 @@ def main() -> None:
 
     if args.phase in ("download", "all"):
         print(f"=== PHASE: DOWNLOAD ({mode}) ===")
+        # limit mode defaults to --no-sdf; curated mode defaults to SDF on
+        no_sdf_arg = getattr(args, "no_sdf", mode == "limit")
         if mode == "curated":
             compounds_csv = download_curated(
                 bench_dir,
                 per_class=getattr(args, "per_class", _CURATED_PER_CLASS),
                 pchembl_min=getattr(args, "pchembl_min", _PCHEMBL_MIN),
+                no_sdf=no_sdf_arg,
             )
         else:
             compounds_csv = download_limit(
                 bench_dir,
                 limit=getattr(args, "limit", 2000),
                 pchembl_min=getattr(args, "pchembl_min", _PCHEMBL_MIN),
+                no_sdf=no_sdf_arg,
             )
 
     if args.phase in ("run", "all"):
