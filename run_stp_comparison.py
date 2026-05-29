@@ -129,7 +129,8 @@ _STP_CLASS_FALLBACK: dict[str, str | None] = {
     "Transferase":                        "COMT",
     "Isomerase":                          "topoisomerase",
     "Other cytosolic protein":            "tubulin",
-    "Oxidoreductase":                     "COX",               # most common drug target in class
+    "Oxidoreductase":                     None,                # COX/MAO/XO/VKORC1 all classified here;
+                                                              # resolved only via ChEMBL ID matching
     "Ligand-gated ion channel":           None,
     "Electrochemical transporter":        None,
     "Enzyme":                             None,
@@ -142,6 +143,37 @@ _STP_CLASS_FALLBACK: dict[str, str | None] = {
 
 # ── STP query + parse ─────────────────────────────────────────────────────────
 
+_STP_CHECKSESSION_BASE = "https://www.swisstargetprediction.ch:8443/checksession"
+_STP_RESULT_BASE       = "https://www.swisstargetprediction.ch/result.php"
+_STP_POLL_INTERVAL     = 5    # seconds between checksession polls
+_STP_MAX_POLLS         = 24   # give up after 2 minutes of polling
+
+
+def _poll_stp_session(session_num: str, job_id: str,
+                      http_session: requests.Session) -> list[dict]:
+    """Poll STP checksession until done, then retrieve results.
+
+    Used when predict.php returns a queued-calculation page (no immediate redirect).
+    Returns parsed predictions or [] on failure.
+    """
+    for poll in range(_STP_MAX_POLLS):
+        try:
+            r = http_session.get(
+                f"{_STP_CHECKSESSION_BASE}?sessionNumber={session_num}",
+                timeout=15
+            )
+            text = r.text.lower()
+            if "finished" in text or "result" in text or job_id in r.text:
+                # Calculation done — fetch result page
+                result_url = f"{_STP_RESULT_BASE}?job={job_id}&organism={_STP_ORGANISM}"
+                r2 = http_session.get(result_url, timeout=60)
+                return _parse_stp_table(r2.text)
+        except Exception:
+            pass
+        time.sleep(_STP_POLL_INTERVAL)
+    return []
+
+
 def _query_stp(smiles: str, session: requests.Session,
                retries: int = 3) -> list[dict]:
     """Submit SMILES to STP and return list of prediction dicts.
@@ -149,6 +181,10 @@ def _query_stp(smiles: str, session: requests.Session,
     Each dict has keys: target, common_name, uniprot_id, chembl_id,
     stp_class, probability (float).
     Returns empty list on failure.
+
+    Handles two STP response modes:
+      1. Immediate: predict.php contains location.replace() → get results now.
+      2. Queued: predict.php shows a loading page → poll checksession until done.
     """
     payload = {"smiles": smiles, "organism": _STP_ORGANISM, "ioi": "2"}
 
@@ -158,17 +194,32 @@ def _query_stp(smiles: str, session: requests.Session,
             if r.status_code != 200:
                 raise ValueError(f"HTTP {r.status_code}")
 
-            # Extract redirect URL containing job ID
+            # Mode 1: immediate result
             redirect_matches = re.findall(r'location\.replace\("(.*?)"\)', r.text)
-            if not redirect_matches:
-                raise ValueError("No redirect URL found in predict.php response")
+            if redirect_matches:
+                result_url = redirect_matches[0]
+                r2 = session.get(result_url, timeout=60)
+                if r2.status_code != 200:
+                    raise ValueError(f"result.php HTTP {r2.status_code}")
+                return _parse_stp_table(r2.text)
 
-            result_url = redirect_matches[0]
-            r2 = session.get(result_url, timeout=60)
-            if r2.status_code != 200:
-                raise ValueError(f"result.php HTTP {r2.status_code}")
+            # Mode 2: queued calculation — extract sessionNumber and job ID
+            session_nums = re.findall(r'sessionNumber=(\d+)', r.text)
+            job_ids      = re.findall(r'job=(\d+)', r.text)
 
-            return _parse_stp_table(r2.text)
+            if session_nums and job_ids:
+                print(f"    [STP queued] session={session_nums[0]} job={job_ids[0]}",
+                      flush=True)
+                preds = _poll_stp_session(session_nums[0], job_ids[0], session)
+                if preds:
+                    return preds
+                # Polling timed out — fall through to retry
+                raise ValueError(
+                    f"Session {session_nums[0]} timed out after "
+                    f"{_STP_MAX_POLLS * _STP_POLL_INTERVAL}s"
+                )
+
+            raise ValueError("No redirect URL or sessionNumber in predict.php response")
 
         except Exception as exc:
             if attempt == retries - 1:
@@ -272,11 +323,28 @@ def run_stp_queries(compounds: list[dict], delay: float = _REQUEST_DELAY
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (chem_target benchmark; academic use)",
-        "Referer":    "https://www.swisstargetprediction.ch/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer":         "https://www.swisstargetprediction.ch/",
     })
 
+    # IMPORTANT: visit homepage first to establish a valid browser-like session.
+    # Without this, STP's predict.php returns the input page (10 KB) instead of
+    # triggering a calculation — likely an anti-bot / session check.
+    print("  Initialising STP session (GET homepage) ...", flush=True)
+    try:
+        session.get("https://www.swisstargetprediction.ch/", timeout=20)
+        time.sleep(2.0)  # brief pause after homepage load
+    except Exception as exc:
+        print(f"  WARNING: STP homepage init failed: {exc}", flush=True)
+
     results: list[dict] = []
+    _consecutive_failures = 0  # track consecutive failures for session refresh
 
     raw_path = _STP_RAW_CSV
     raw_file  = open(raw_path, "w", newline="", encoding="utf-8")
@@ -294,6 +362,20 @@ def run_stp_queries(compounds: list[dict], delay: float = _REQUEST_DELAY
         print(f"  [{i}/{total}] {name[:40]} ({true_class}) ...", flush=True)
 
         preds = _query_stp(smiles, session)
+
+        # If too many consecutive failures, refresh the STP session
+        if not preds:
+            _consecutive_failures += 1
+            if _consecutive_failures >= 3:
+                print("  [Session refresh] Re-visiting STP homepage ...", flush=True)
+                try:
+                    session.get("https://www.swisstargetprediction.ch/", timeout=20)
+                    _consecutive_failures = 0
+                    time.sleep(5.0)
+                except Exception as exc:
+                    print(f"  [Session refresh failed] {exc}", flush=True)
+        else:
+            _consecutive_failures = 0
 
         # Write raw predictions
         for rank, pred in enumerate(preds, start=1):
