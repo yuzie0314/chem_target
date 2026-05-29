@@ -29,8 +29,20 @@ data/*.sdf
 data/benchmark/
 output/benchmark/
 
-# Temporary validation scripts
+# Temporary validation/test scripts
 tmp_*.py
+
+# STP comparison runner scripts (generated)
+tmp_stp_launcher.py
+
+# STP run log (transient)
+output/benchmark/stp_run.log
+output/benchmark/stp_run_err.log
+output/benchmark/stp_pid.txt
+output/benchmark/stp_job_id.txt
+
+# Auto-generated PDB batch fetch progress cache
+db/fg_residue_map.json
 
 # DB is auto-generated — DO commit it so the repo is usable out of the box
 # db/fg_database.json  ← intentionally tracked

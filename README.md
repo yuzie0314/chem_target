@@ -185,6 +185,51 @@ Target classes covered by the benchmark (19 classes):
 | xanthine oxidase | XO / xanthine dehydrogenase |
 | COMT | COMT |
 
+### External comparison: SwissTargetPrediction
+
+To contextualise chem_target's accuracy, we benchmark against
+[SwissTargetPrediction (STP)](https://www.swisstargetprediction.ch/) — a widely used
+fingerprint-similarity reverse-docking tool trained directly on ChEMBL.
+
+```bash
+# Run STP on the same curated set and compare
+python run_stp_comparison.py
+
+# Regenerate comparison report from cached STP results
+python run_stp_comparison.py --compare
+```
+
+Outputs saved to `output/benchmark/`:
+- `stp_raw.csv` — all 100 STP predictions per compound (rank × probability × class)
+- `stp_results.csv` — per-compound Top-1/Top-3/MRR
+- `stp_summary.csv` — per-class accuracy table
+- `stp_report.txt` — STP-only narrative report
+- `comparison_report.txt` — side-by-side chem_target vs STP
+
+#### Overall comparison (curated set, 343 compounds, 19 classes)
+
+| Metric | chem_target | SwissTargetPrediction |
+|---|---|---|
+| Top-1 accuracy | 6.7% | *pending* |
+| Top-3 accuracy | 14.9% | *pending* |
+| Mean Reciprocal Rank | 0.142 | *pending* |
+
+> ⚠ **STP bias note:** The curated test compounds are sourced directly from ChEMBL,
+> the same database STP's fingerprint models are trained on.  STP accuracy figures
+> therefore represent an *in-distribution* upper bound — analogous to chem_target's
+> BioLiP/PDB circularity.  Both biases are disclosed in the respective report files.
+
+**Design philosophy comparison:**
+
+| Dimension | chem_target | SwissTargetPrediction |
+|---|---|---|
+| Approach | FG-to-residue structural mapping | FP2 / FP4 fingerprint similarity |
+| Training data | BioLiP 2.0 (PDB structural binding events) | ChEMBL activities |
+| Output | Target class + key binding residues + FG drivers | Ranked target proteins + probability |
+| Novel scaffolds | Generalises via functional groups | Limited by fingerprint coverage |
+| Mechanism insight | ✅ Explains *which* FGs drive binding | ❌ Black-box similarity |
+| Speed | Fast (local, no API) | Requires web submission |
+
 ### ⚠ Validation bias disclosure
 
 **This tool's residue scoring layer is derived from BioLiP 2.0, which aggregates
@@ -302,6 +347,7 @@ chem_target/
 │   └── benchmark/            # Benchmark evaluation results
 ├── main.py                   # CLI entry point (thin — no logic)
 ├── run_benchmark.py          # ChEMBL benchmark pipeline (download → run → report)
+├── run_stp_comparison.py     # SwissTargetPrediction comparison pipeline
 └── README.md
 ```
 
