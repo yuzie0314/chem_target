@@ -56,12 +56,20 @@ conda activate chem_target
 # Single compound — print to terminal
 python main.py predict --smiles "CC(=O)Oc1ccccc1C(=O)O" --name Aspirin
 
-# Batch — CSV input, save summary table + individual reports
+# Batch — CSV input, save summary table + plain-text reports
 python main.py predict \
     --input  data/compounds.csv \
     --output output/predictions.csv \
     --report-dir output/reports \
     --top 10
+
+# HTML reports with scoring methodology (open in browser)
+python main.py predict \
+    --input    data/compounds.csv \
+    --html-dir output/html \
+    --top 10
+# → output/html/index.html        (batch summary, links to each compound)
+# → output/html/<compound>.html   (structure SVG + targets + residues + methodology)
 
 # Functional group abundance table + SVG images
 python main.py fg \

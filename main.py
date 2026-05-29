@@ -152,9 +152,12 @@ def run_predict(args: argparse.Namespace) -> None:
     # ── Optional output paths ──────────────────────────────────────────────────
     csv_path    = Path(args.output)     if args.output     else None
     report_dir  = Path(args.report_dir) if args.report_dir else None
+    html_dir    = Path(args.html_dir)   if args.html_dir   else None
 
     if report_dir:
         report_dir.mkdir(parents=True, exist_ok=True)
+    if html_dir:
+        html_dir.mkdir(parents=True, exist_ok=True)
 
     # ── CSV header (written once) ──────────────────────────────────────────────
     csv_fieldnames = (
@@ -175,7 +178,15 @@ def run_predict(args: argparse.Namespace) -> None:
         csv_writer = csv.DictWriter(csv_fh, fieldnames=csv_fieldnames)
         csv_writer.writeheader()
 
+    # ── Load fg_db once for HTML reports ──────────────────────────────────────
+    fg_db: dict = {}
+    if html_dir:
+        from utils.target_predictor import load_fg_db
+        fg_db = load_fg_db()
+
     # ── Predict each compound ──────────────────────────────────────────────────
+    html_index_data: list[dict] = []   # collected for index.html
+
     try:
         for name, smiles in compounds.items():
             pred    = predict(smiles, top_residues=args.top)
@@ -184,10 +195,38 @@ def run_predict(args: argparse.Namespace) -> None:
             # stdout
             print(report)
 
+            # safe filename base (shared by .txt and .html)
+            safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+
             # individual text report
             if report_dir:
-                safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
                 (report_dir / f"{safe_name}.txt").write_text(report, encoding="utf-8")
+
+            # individual HTML report
+            if html_dir:
+                from utils.report_generator import generate_html_report
+                html_content = generate_html_report(name, smiles, pred, fg_db,
+                                                    top_residues=args.top)
+                html_file = html_dir / f"{safe_name}.html"
+                html_file.write_text(html_content, encoding="utf-8")
+
+                # collect data for index.html
+                tc = pred.get("target_class_votes")
+                top_target = ""
+                top_score  = ""
+                if tc is not None and not tc.empty:
+                    top_target = tc.iloc[0]["target_class"]
+                    top_score  = tc.iloc[0]["score"]
+                html_index_data.append({
+                    "name":          name,
+                    "smiles":        smiles,
+                    "html_filename": html_file.name,
+                    "n_fgs":         len(pred.get("fgs_detected", [])),
+                    "fgs":           ", ".join(pred.get("fgs_detected", [])),
+                    "top_target":    top_target,
+                    "top_score":     top_score,
+                    "warning":       pred.get("warning") or "",
+                })
 
             # CSV summary row
             if csv_writer:
@@ -196,10 +235,18 @@ def run_predict(args: argparse.Namespace) -> None:
         if csv_fh:
             csv_fh.close()
 
-    if csv_path:
-        print(f"\nSummary CSV saved: {csv_path}")
-    if report_dir:
+    # ── Write index.html for batch HTML runs ───────────────────────────────────
+    if html_dir and html_index_data:
+        from utils.report_generator import generate_index_html
+        index_html = generate_index_html(html_index_data)
+        (html_dir / "index.html").write_text(index_html, encoding="utf-8")
+        print(f"HTML reports saved: {html_dir}/")
+        print(f"  Open: {html_dir / 'index.html'}")
+    elif report_dir:
         print(f"Individual reports saved: {report_dir}/")
+
+    if csv_path:
+        print(f"Summary CSV saved: {csv_path}")
 
 
 # ── Argument parser ────────────────────────────────────────────────────────────
@@ -271,6 +318,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--report-dir", default=None, dest="report_dir",
         help="Save a <compound_name>.txt full report for each compound "
              "to this directory (e.g. output/reports).",
+    )
+    pred_p.add_argument(
+        "--html-dir", default=None, dest="html_dir",
+        help="Save a <compound_name>.html report for each compound, "
+             "plus an index.html summary, to this directory "
+             "(e.g. output/html). Self-contained — no external dependencies.",
     )
 
     return parser
