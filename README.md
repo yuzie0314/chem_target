@@ -126,10 +126,10 @@ Warfarin,CC(=O)CC(c1ccccc1)c1c(O)c2ccccc2oc1=O
 A systematic benchmark pipeline is available for larger-scale evaluation:
 
 ```bash
-# Curated set: top-20 active compounds per target class (~300 total)
+# Curated set: top-20 active compounds per target class (~340 total)
 python run_benchmark.py all --mode curated
 
-# Limit test: up to 2 000 compounds across all target classes
+# Limit test: up to 2 000 compounds across all target classes (SMILES-only, fast)
 python run_benchmark.py all --mode limit --limit 2000
 ```
 
@@ -137,6 +137,29 @@ Outputs saved to `output/benchmark/`:
 - `curated_results.csv` / `limit_results.csv` — per-compound predictions + accuracy flags
 - `curated_summary.csv` / `limit_summary.csv` — per-class Top-1 / Top-3 accuracy + MRR
 - `curated_report.txt` / `limit_report.txt` — plain-text summary (publication-ready)
+
+#### Results (pChEMBL ≥ 6.0, binding assays, 19 target classes)
+
+| Set | N | FG detected | Top-1 | Top-3 | MRR |
+|---|---|---|---|---|---|
+| Curated (top-20/class) | 343 | 99.7% | 6.7% | 14.9% | 0.142 |
+| Limit test | 1 788 | 99.8% | 7.1% | **16.4%** | **0.153** |
+
+Per-class performance (Limit test, n ≈ 105 per class):
+
+| Target class | Top-1 | Top-3 | MRR | Notes |
+|---|---|---|---|---|
+| GPCR | 43.8% | **87.6%** | 0.662 | Best class — many FGs annotate GPCR |
+| kinase | 27.6% | 41.9% | 0.422 | Strong — broad FG coverage |
+| adenosine receptor | 20.0% | 26.7% | 0.275 | Purine/Xanthine FGs specific |
+| nuclear receptor | 14.3% | 32.4% | 0.330 | Steroid + Phenol FGs |
+| serine protease | 2.9% | 30.5% | 0.244 | Amide/carbonyl signatures |
+| carbonic anhydrase | 2.9% | 29.5% | 0.212 | Sulfonamide dominant |
+| HDAC | 6.7% | 6.7% | 0.074 | Hydroxamic acid / Thiol |
+| CYP450 | 2.9% | 12.4% | 0.094 | Imidazole / Ether |
+| COX | 0.0% | 6.7% | 0.155 | Drowned by generic FGs |
+| tubulin | 0.0% | 3.8% | 0.113 | Colchicine / vinca alkaloids |
+| cysteine protease / MAO / PDE / mTOR / topoisomerase / xanthine oxidase | 0% | 0% | <0.015 | FG annotation gaps (see Known limitations) |
 
 Target classes covered by the benchmark (19 classes):
 
