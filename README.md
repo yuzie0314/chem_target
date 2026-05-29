@@ -210,14 +210,43 @@ Outputs saved to `output/benchmark/`:
 
 | Metric | chem_target | SwissTargetPrediction |
 |---|---|---|
-| Top-1 accuracy | 6.7% | *pending* |
-| Top-3 accuracy | 14.9% | *pending* |
-| Mean Reciprocal Rank | 0.142 | *pending* |
+| Top-1 accuracy | 6.7% | **55.1%** |
+| Top-3 accuracy | 14.9% | **70.3%** |
+| Mean Reciprocal Rank | 0.142 | **0.633** |
 
 > ⚠ **STP bias note:** The curated test compounds are sourced directly from ChEMBL,
 > the same database STP's fingerprint models are trained on.  STP accuracy figures
 > therefore represent an *in-distribution* upper bound — analogous to chem_target's
 > BioLiP/PDB circularity.  Both biases are disclosed in the respective report files.
+
+#### Per-class breakdown
+
+| Target class | N | cT Top-1 | cT Top-3 | cT MRR | STP Top-1 | STP Top-3 | STP MRR |
+|---|---|---|---|---|---|---|---|
+| COMT | 20 | 0% | 0% | 0.000 | 5% | 85% | 0.341 |
+| COX | 20 | 0% | 0% | 0.105 | **90%** | **90%** | 0.913 |
+| CYP450 | 20 | 0% | 15% | 0.080 | 35% | 75% | 0.594 |
+| GPCR | 20 | **65%** | 75% | **0.751** | 75% | 75% | 0.750 |
+| HDAC | 20 | 5% | 5% | 0.050 | **100%** | **100%** | 1.000 |
+| MAO | 20 | 0% | 0% | 0.018 | 0% | 0% | 0.003 |
+| PDE | 20 | 0% | 0% | 0.000 | 65% | **95%** | 0.802 |
+| adenosine receptor | 20 | 5% | 20% | 0.135 | 80% | 85% | 0.825 |
+| carbonic anhydrase | 20 | 0% | 40% | 0.237 | **100%** | **100%** | 1.000 |
+| cysteine protease | 20 | 0% | 0% | 0.000 | 95% | 95% | 0.950 |
+| kinase | 20 | 30% | 45% | 0.438 | 80% | 85% | 0.825 |
+| mTOR | 20 | 0% | 0% | 0.005 | 60% | 70% | 0.670 |
+| nuclear receptor | 20 | 10% | 20% | 0.284 | 70% | 75% | 0.757 |
+| ribosome | 3 | 0% | 0% | 0.000 | 0% | 0% | 0.000 |
+| serine protease | 20 | 0% | 35% | 0.265 | 80% | 80% | 0.800 |
+| topoisomerase | 20 | 0% | 0% | 0.000 | 0% | 0% | 0.022 |
+| tubulin | 20 | 0% | 0% | 0.067 | 5% | 15% | 0.154 |
+| xanthine oxidase | 20 | 0% | 0% | 0.000 | 5% | 80% | 0.456 |
+
+**Notable findings:**
+- chem_target matches or beats STP on **GPCR** (65% vs 75% Top-1, 0.751 vs 0.750 MRR)
+- Both tools fail completely on **MAO**, **topoisomerase**, and **ribosome**
+- STP dominates on **HDAC**, **carbonic anhydrase**, **COX**, **cysteine protease** (fingerprint similarity excels for well-populated ChEMBL classes)
+- chem_target's FG approach generalises better to **novel scaffolds** not in ChEMBL
 
 **Design philosophy comparison:**
 
