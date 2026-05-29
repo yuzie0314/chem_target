@@ -205,7 +205,7 @@ def run_predict(args: argparse.Namespace) -> None:
             # individual HTML report
             if html_dir:
                 from utils.report_generator import generate_html_report
-                html_content = generate_html_report(name, smiles, pred, fg_db,
+                html_content = generate_html_report(name, smiles, pred,
                                                     top_residues=args.top)
                 html_file = html_dir / f"{safe_name}.html"
                 html_file.write_text(html_content, encoding="utf-8")
@@ -238,7 +238,7 @@ def run_predict(args: argparse.Namespace) -> None:
     # ── Write index.html for batch HTML runs ───────────────────────────────────
     if html_dir and html_index_data:
         from utils.report_generator import generate_index_html
-        index_html = generate_index_html(html_index_data)
+        index_html = generate_index_html(html_index_data, fg_db=fg_db)
         (html_dir / "index.html").write_text(index_html, encoding="utf-8")
         print(f"HTML reports saved: {html_dir}/")
         print(f"  Open: {html_dir / 'index.html'}")

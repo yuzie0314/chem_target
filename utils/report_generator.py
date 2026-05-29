@@ -3,14 +3,16 @@
 Produces self-contained HTML files — no external CSS/JS dependencies.
 All styles are inline; images are embedded as inline SVG.
 
-Each report contains:
+Each compound report contains:
   1. Compound header (name, SMILES, date)
   2. Molecule structure with FG highlights (inline SVG)
   3. Detected functional groups (colour-coded chips)
   4. Predicted target classes (ranked table + score bars)
   5. Key binding residues (horizontal score bars)
-  6. Scoring methodology (plain-language explanation for clients)
-  7. Data sources & version footer
+  6. Data sources & version footer
+
+Scoring methodology is shown ONCE in index.html (batch summary page),
+not repeated on every individual compound report.
 
 Batch usage also generates an index.html summary page.
 """
@@ -258,9 +260,17 @@ def _score_bar_html(value: float, max_value: float, color: str = "") -> str:
     )
 
 
-def _methodology_html(fgs_detected: list[str], fg_db: dict) -> str:
-    """Return the methodology explanation section as HTML."""
-    # Compute IDF for example targets to show in the explanation table
+def _methodology_html(fg_db: dict) -> str:
+    """Return the methodology explanation section as HTML (for index.html).
+
+    Args:
+        fg_db: functional_groups dict from fg_database.json.
+               Used to compute the illustrative IDF example table.
+               Pass an empty dict to skip the example table.
+
+    Returns:
+        HTML string for the methodology section (no compound-specific content).
+    """
     from math import log as _log
     tc_count: dict[str, int] = {}
     for entry in fg_db.values():
@@ -268,36 +278,47 @@ def _methodology_html(fgs_detected: list[str], fg_db: dict) -> str:
             tc_count[tc] = tc_count.get(tc, 0) + 1
 
     n_total = _N_FGS_TOTAL
-    # Pick 4 illustrative targets: 2 generic, 2 specific
-    illustrative = sorted(tc_count.items(), key=lambda x: x[1])
-    # Bottom 2 (most specific) + top 2 (most generic)
-    examples = illustrative[:2] + illustrative[-2:]
 
-    rows = ""
-    for tc, count in sorted(examples, key=lambda x: x[1], reverse=True):
-        idf = round(_log(n_total / count), 2)
-        rows += (
-            f"<tr><td>{_html_module.escape(tc)}</td>"
-            f"<td style='text-align:center'>{count}</td>"
-            f"<td style='text-align:center'>{idf:.2f}</td></tr>"
-        )
-
-    detected_str = ", ".join(
-        f"<strong>{_html_module.escape(fg)}</strong>" for fg in fgs_detected
-    ) if fgs_detected else "<em>(none detected)</em>"
+    if tc_count:
+        # Pick 4 illustrative targets: 2 most-specific + 2 most-generic
+        illustrative = sorted(tc_count.items(), key=lambda x: x[1])
+        examples = illustrative[:2] + illustrative[-2:]
+        table_rows = ""
+        for tc, count in sorted(examples, key=lambda x: x[1], reverse=True):
+            idf = round(_log(n_total / count), 2)
+            table_rows += (
+                f"<tr><td>{_html_module.escape(tc)}</td>"
+                f"<td style='text-align:center'>{count}</td>"
+                f"<td style='text-align:center'>{idf:.2f}</td></tr>"
+            )
+        example_table = f"""
+  <table>
+    <tr>
+      <th>Target class</th>
+      <th style="text-align:center">FGs annotated</th>
+      <th style="text-align:center">Weight (IDF)</th>
+    </tr>
+    {table_rows}
+  </table>
+  <p style="margin-top:10px;color:#666;font-size:.80rem;">
+    Higher weight = more specific prediction. Lower weight = generic label
+    (still relevant, but less discriminating).
+  </p>"""
+    else:
+        example_table = ""
 
     return f"""
 <div class="method-box">
   <h3>🔬 How are targets ranked?</h3>
   <p>
-    The scoring pipeline has two complementary stages.
-    For this compound, the following functional groups were identified:<br>
-    {detected_str}
+    The scoring pipeline has two complementary stages, each designed to ensure
+    that specific, pharmacologically meaningful signals rise above generic noise.
+    Click any compound name above to see its detailed prediction report.
   </p>
 
   <h4>Stage 1 — Structural database matching (residue scoring)</h4>
   <p>
-    Each functional group is matched against <strong>{_BIOLIP_EVENTS} protein–ligand
+    Each detected functional group is matched against <strong>{_BIOLIP_EVENTS} protein–ligand
     binding events</strong> from the BioLiP 2.0 structural database.
     For every amino acid residue type, we count how often it appears in binding
     sites that contain each of your compound's functional groups.
@@ -330,18 +351,7 @@ def _methodology_html(fgs_detected: list[str], fg_db: dict) -> str:
     (e.g. "VKORC1" for Coumarin, or "antimalarial target" for Endoperoxide) is a
     <em>specific, high-confidence</em> signal and receives a higher score.
   </p>
-  <table>
-    <tr>
-      <th>Target class</th>
-      <th style="text-align:center">FGs annotated</th>
-      <th style="text-align:center">Weight (IDF)</th>
-    </tr>
-    {rows}
-  </table>
-  <p style="margin-top:10px;color:#666;font-size:.80rem;">
-    Higher weight = more specific prediction. Lower weight = generic label
-    (still relevant, but less discriminating).
-  </p>
+  {example_table}
 </div>
 """
 
@@ -352,16 +362,19 @@ def generate_html_report(
     name: str,
     smiles: str,
     pred: dict,
-    fg_db: dict,
+    fg_db: dict = {},       # noqa: B006 — kept for API compatibility; not used
     top_residues: int = 10,
 ) -> str:
     """Generate a self-contained HTML report for one compound prediction.
+
+    The scoring methodology section is NOT included here; it appears once
+    in the batch index.html generated by generate_index_html().
 
     Args:
         name:         Compound display name.
         smiles:       Input SMILES string.
         pred:         Result dict from target_predictor.predict().
-        fg_db:        functional_groups dict from fg_database.json.
+        fg_db:        Ignored. Kept for backward API compatibility.
         top_residues: How many residues to show in the bar chart.
 
     Returns:
@@ -442,9 +455,6 @@ def generate_html_report(
     else:
         rs_html = '<p style="color:#888;">No residue scores available.</p>'
 
-    # ── Methodology ────────────────────────────────────────────────────────────
-    method_html = _methodology_html(fgs, fg_db)
-
     # ── Full HTML ─────────────────────────────────────────────────────────────
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -498,12 +508,6 @@ def generate_html_report(
     {rs_html}
   </div>
 
-  <!-- Methodology -->
-  <div class="section">
-    <h2>Scoring Methodology</h2>
-    {method_html}
-  </div>
-
   <!-- Footer -->
   <div class="rpt-footer">
     <strong>Data sources:</strong>
@@ -526,21 +530,28 @@ def generate_html_report(
 def generate_index_html(
     results: list[dict[str, Any]],
     title: str = "Target Prediction Batch Report",
+    fg_db: dict = {},       # noqa: B006
 ) -> str:
     """Generate a summary index HTML linking to individual compound reports.
+
+    The scoring methodology section is rendered once here so clients have a
+    single, clear explanation of how predictions are generated.
 
     Args:
         results: List of dicts with keys:
                    name, smiles, html_filename, n_fgs, fgs,
                    top_target, top_score, warning
         title:   Page title.
+        fg_db:   functional_groups dict from fg_database.json (used to build
+                 the illustrative IDF table in the methodology section).
 
     Returns:
         HTML string for the index page.
     """
-    today = date.today().strftime("%Y-%m-%d")
-    n_ok  = sum(1 for r in results if not r.get("warning"))
-    n_err = len(results) - n_ok
+    today      = date.today().strftime("%Y-%m-%d")
+    n_ok       = sum(1 for r in results if not r.get("warning"))
+    n_err      = len(results) - n_ok
+    method_html = _methodology_html(fg_db)
 
     rows = ""
     for i, r in enumerate(results, 1):
@@ -621,7 +632,18 @@ def generate_index_html(
     </table>
   </div>
 
+  <!-- Methodology — shown once here, not repeated on individual reports -->
+  <div class="section">
+    <h2>Scoring Methodology</h2>
+    {method_html}
+  </div>
+
   <div class="rpt-footer">
+    <strong>Data sources:</strong>
+    BioLiP 2.0 ({_BIOLIP_EVENTS} binding events) ·
+    RCSB CCD (SMILES for 6,002 ligands) ·
+    PubChem / ChEBI (FG metadata) ·
+    RCSB PDB (3D poses)<br>
     <strong>chem_target v{_VERSION}</strong> ·
     Generated {today} ·
     For research use only — not a substitute for experimental validation.
