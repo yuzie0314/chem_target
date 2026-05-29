@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-05-28",
+  "last_updated": "2026-05-29",
   "sources": ["chebi", "pubchem", "manual"],
   "note": "Keys must exactly match FG_SMARTS keys in constants/fg_smarts.py (plus 'Steroid' which uses Python detection). Rebuild db/fg_residue_table.csv after any key change.",
   "functional_groups": {
@@ -239,6 +239,37 @@
         "GPCR",
         "tubulin",
         "BACE1"
+      ],
+      "source": "manual"
+    },
+
+    "Purine": {
+      "smarts": "c1ncc2ncnc2n1",
+      "pubchem_cid": 1044,
+      "chebi_id": "CHEBI:26401",
+      "description": "Fused 5+6 bicyclic N-heterocycle (imidazole fused to pyrimidine). 4 N atoms; the SMARTS does not require N-H and therefore matches all N-substituted and N-H purines. Scaffold of adenine, guanine, hypoxanthine, inosine, caffeine, theophylline, and most nucleoside analog antivirals (acyclovir, tenofovir). Superset of Xanthine. Partially overlaps Imidazole (5-membered ring portion) and Xanthine (methylxanthine subset).",
+      "known_target_classes": [
+        "adenosine receptor",
+        "kinase",
+        "DNA polymerase",
+        "PDE",
+        "purine nucleoside phosphorylase",
+        "adenylyl cyclase"
+      ],
+      "source": "manual"
+    },
+
+    "Xanthine": {
+      "smarts": "O=c1nc(=O)c2ncnc2n1",
+      "pubchem_cid": 1188,
+      "chebi_id": "CHEBI:17712",
+      "description": "2,6-Dioxopurine scaffold: purine with C=O at positions 2 and 6. Subset of Purine. Scaffold of xanthine, caffeine (1,3,7-trimethyl), theophylline (1,3-dimethyl), and theobromine (3,7-dimethyl). The SMARTS requires two aromatic C=O groups in the 6-membered ring, uniquely distinguishing this from adenine/guanine purines. Caffeine and theophylline act as adenosine receptor antagonists and PDE inhibitors; theophylline is a classic bronchodilator.",
+      "known_target_classes": [
+        "adenosine receptor",
+        "PDE",
+        "xanthine oxidase",
+        "CYP1A2",
+        "CYP3A4"
       ],
       "source": "manual"
     },

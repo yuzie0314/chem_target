@@ -22,6 +22,11 @@ only, never ``r5;r6``. Detection is therefore implemented as a Python function
 ``_detect_steroid_core`` in utils/fg_detector.py.  The name "Steroid" is listed
 in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
+Current FG count
+----------------
+FG_SMARTS defines 31 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 32 functional groups.
+
 Used by
 -------
 - utils/fg_detector.detect_smarts()    FG profile of a query compound
@@ -91,6 +96,18 @@ FG_SMARTS: dict[str, str] = {
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
     # Partially overlaps Phenyl ring (benzene portion still matches).
     "Indole":                   "c1ccc2[nH]ccc2c1",
+    # Purine: fused 5+6 bicyclic N-heterocycle (imidazole + pyrimidine).
+    #   4 N atoms; no H requirement — matches N-H, N-alkyl, and pyridine-type N.
+    #   Scaffold of adenine, guanine, hypoxanthine, xanthine, caffeine, and
+    #   many kinase inhibitors / antiviral nucleoside analogs.
+    #   Superset of Xanthine.
+    "Purine":                   "c1ncc2ncnc2n1",
+    # Xanthine: 2,6-dioxopurine — the purine with C=O at positions 2 and 6.
+    #   Subset of Purine. Scaffold of caffeine (1,3,7-trimethylxanthine),
+    #   theophylline, theobromine, and xanthine itself. Key pharmacophores:
+    #   adenosine receptor antagonism (caffeine), PDE inhibition (theophylline),
+    #   xanthine oxidase inhibition (allopurinol-adjacent).
+    "Xanthine":                 "O=c1nc(=O)c2ncnc2n1",
 
     # ── Other nitrogen ────────────────────────────────────────────────────────
     "Nitrile":                  "C#N",
