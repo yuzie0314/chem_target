@@ -258,7 +258,7 @@
       "smarts": "[SX4](=O)(=O)[NX3]",
       "pubchem_cid": 5333,
       "chebi_id": "CHEBI:35358",
-      "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold.",
+      "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold. Note: acylsulfonamide (C(=O)-NH-SO2) is captured by the separate 'Acylsulfonamide' FG to avoid conflating the two pharmacophores.",
       "known_target_classes": [
         "carbonic anhydrase",
         "COX",
@@ -273,6 +273,27 @@
       "description": "Methyl sulfone group (-SO2CH3) attached to an aromatic ring. Signature COX-2 selectivity pharmacophore: the para-methylsulfonyl group of celecoxib, rofecoxib, and valdecoxib inserts into a hydrophilic side-pocket formed by Arg513/Phe518 in COX-2. This pocket is blocked in COX-1 (Val523 replaces a smaller residue). Not present in classical NSAIDs (ibuprofen, naproxen) or the Sulfonamide class of coxibs — distinct from SO2NH2.",
       "known_target_classes": [
         "COX"
+      ],
+      "source": "manual"
+    },
+    "Hydroxamate": {
+      "smarts": "[CX3](=O)[NX3H][OX2H]",
+      "pubchem_cid": 11751,
+      "chebi_id": "CHEBI:24650",
+      "description": "RC(=O)NHOH group. Bidentate zinc-chelating warhead: both the C=O and N-OH oxygens coordinate the catalytic Zn2+ in HDAC and MMP active sites. Signature pharmacophore of FDA-approved HDAC inhibitors vorinostat (SAHA), belinostat, panobinostat, and pracinostat. Also present in matrix metalloproteinase inhibitors (batimastat, marimastat). Structurally distinct from Amide (no OH) and Ester (no NH).",
+      "known_target_classes": [
+        "HDAC",
+        "MMP"
+      ],
+      "source": "manual"
+    },
+    "Acylsulfonamide": {
+      "smarts": "[CX3](=O)[NX3H][SX4](=O)(=O)",
+      "pubchem_cid": null,
+      "chebi_id": null,
+      "description": "RC(=O)-NH-S(=O)2-R' group. Distinguishes the cryptophycin / epothilone-class tubulin-binding macrolide pharmacophore from classical sulfonamides. The acyl-NH bridges C=O and SO2, forming a rigid template that positions the macrolide correctly for tubulin beta-subunit binding. Also a pharmacophore in some beta-lactamase inhibitors. Distinct from Sulfonamide (no C=O before N) and Amide (no S after N).",
+      "known_target_classes": [
+        "tubulin"
       ],
       "source": "manual"
     },
@@ -367,10 +388,11 @@
       "smarts": "[CX3](=O)C=C",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:51689",
-      "description": "Michael acceptor motif C=C-C=O. Undergoes 1,4-addition with soft nucleophiles (Cys-SH, Lys-NH2). Covalent warhead in natural products (curcumin, parthenolide, withaferin A) and designed covalent inhibitors.",
+      "description": "Michael acceptor motif C=C-C=O. Undergoes 1,4-addition with soft nucleophiles (Cys-SH, Lys-NH2). Covalent warhead in natural products (curcumin, parthenolide, withaferin A) and designed covalent inhibitors. Enone-containing HDAC inhibitors (tubastatin analogs, withanolides) act via Michael addition at the Cys151/Cys273/Cys288 residues of some HDAC isoforms.",
       "known_target_classes": [
         "cysteine protease",
-        "kinase"
+        "kinase",
+        "HDAC"
       ],
       "source": "manual"
     },
@@ -378,10 +400,11 @@
       "smarts": "[CX3;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R](=O)[OX2;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R]",
       "pubchem_cid": null,
       "chebi_id": null,
-      "description": "Lactone in a macrocyclic ring of 12 or more atoms. Subset of Lactone; excludes all rings up to 11-membered. Pharmacophore class of erythromycin (14-membered, ribosome 50S), rapamycin/sirolimus (31-membered, mTOR complex), tacrolimus/FK506 (23-membered, calcineurin via FKBP12). Macrolides bind ribosomes (antibacterial), mTOR complex (immunosuppressant/anticancer), and calcineurin (immunosuppressant).",
+      "description": "Lactone in a macrocyclic ring of 12 or more atoms. Subset of Lactone; excludes all rings up to 11-membered. Pharmacophore class of erythromycin (14-membered, ribosome 50S), rapamycin/sirolimus (31-membered, mTOR complex), tacrolimus/FK506 (23-membered, calcineurin via FKBP12). Macrolides bind ribosomes (antibacterial), mTOR complex (immunosuppressant/anticancer), calcineurin (immunosuppressant), and tubulin (cryptophycin/epothilone-class microtubule destabilisers).",
       "known_target_classes": [
         "mTOR",
-        "ribosome"
+        "ribosome",
+        "tubulin"
       ],
       "source": "manual"
     }

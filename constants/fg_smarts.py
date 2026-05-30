@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 33 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 34 functional groups.
+FG_SMARTS defines 35 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 36 functional groups.
 
 Used by
 -------
@@ -127,6 +127,21 @@ FG_SMARTS: dict[str, str] = {
     "Thiol":                    "[SX2H]",
     "Sulfonamide":              "[SX4](=O)(=O)[NX3]",
     "Methylsulfone":            "[CX4H3][SX4](=O)(=O)c",
+
+    # ── Metal-binding warheads ────────────────────────────────────────────────
+    # Hydroxamate: RC(=O)NHOH. Zinc-chelating warhead for HDAC inhibition
+    #   (vorinostat/SAHA, belinostat, panobinostat, pracinostat). Also present
+    #   in MMP/ADAM inhibitors (batimastat). The NH bridges to the Zn2+ via
+    #   the C=O and OH oxygens (bidentate chelation). The SMARTS requires the
+    #   NH to be present (H1 on N), distinguishing from N-alkyl hydroxamates and
+    #   acetohydroxamic acid (simpler molecules).
+    "Hydroxamate":              "[CX3](=O)[NX3H][OX2H]",
+    # Acylsulfonamide: RC(=O)-NH-S(=O)(=O)-R'. Distinguishes the cryptophycin /
+    #   epothilone-class tubulin-binding macrolide pharmacophore (C=O adjacent to
+    #   SO2 via NH) from classical RS(=O)2NHR sulfonamides. The NH is the key
+    #   difference: not a free amine but an acylamide N bridging C=O and SO2.
+    #   Also appears in some β-lactamase inhibitors and acylsulfonamide prodrugs.
+    "Acylsulfonamide":         "[CX3](=O)[NX3H][SX4](=O)(=O)",
 
     # ── Aromatic scaffolds ────────────────────────────────────────────────────
     # Phenyl ring: pure carbocyclic benzene — π-stacking, hydrophobic contacts.

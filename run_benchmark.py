@@ -86,7 +86,7 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
     "GPCR":                 ["CHEMBL210", "CHEMBL217", "CHEMBL218",
                              "CHEMBL226", "CHEMBL251"],           # β2-AR, D2R, 5-HT2A, A1R, A2AR
     "serine protease":      ["CHEMBL204", "CHEMBL209"],           # thrombin, trypsin
-    "cysteine protease":    ["CHEMBL4523", "CHEMBL3227"],         # cathepsin B, cathepsin L
+    "cysteine protease":    ["CHEMBL4072", "CHEMBL268"],           # cathepsin B (human), cathepsin K (human)
     "nuclear receptor":     ["CHEMBL1871", "CHEMBL206",
                              "CHEMBL2034", "CHEMBL3151"],         # AR, ERα, GR, PR
     "MAO":                  ["CHEMBL1951", "CHEMBL2039"],          # MAO-A (human), MAO-B (human)
@@ -102,8 +102,8 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
     "VKORC1":               ["CHEMBL1953583"],                    # VKORC1
     "topoisomerase":        ["CHEMBL1781", "CHEMBL1806"],         # Topo I (human), Topo II-α (human)
     "ribosome":             ["CHEMBL612558"],                     # 50S ribosomal (bacterial)
-    "xanthine oxidase":     ["CHEMBL1916"],                       # XO (xanthine dehydrogenase)
-    "COMT":                 ["CHEMBL4203"],                       # COMT
+    "xanthine oxidase":     ["CHEMBL1929"],                       # XO/XDH (human, UniProt P47989)
+    "COMT":                 ["CHEMBL2023"],                       # COMT (human Homo sapiens)
 }
 
 # Compounds per class (curated mode)
