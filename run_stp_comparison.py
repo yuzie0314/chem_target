@@ -58,6 +58,17 @@ from typing import Optional
 
 import requests
 
+# ── Metrics module ─────────────────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).parent))
+from utils.metrics import (
+    ClassMetrics,
+    compute_metrics,
+    format_metrics_table,
+    format_comparison_metrics_table,
+    macro_avg,
+    weighted_avg,
+)
+
 # ── Force UTF-8 output (Windows cp950 workaround) ─────────────────────────────
 # Only rewrap if stdout has a .buffer (raw stream) — avoids double-wrapping
 # when stdout is already replaced (e.g. by a log-file wrapper).
@@ -412,6 +423,63 @@ def run_stp_queries(compounds: list[dict], delay: float = _REQUEST_DELAY
     return results
 
 
+# ── Predicted-set extraction from raw CSV ─────────────────────────────────────
+
+def _load_stp_predicted_sets(
+    raw_csv: Path = _STP_RAW_CSV,
+    k: int = 3,
+) -> dict[str, dict]:
+    """Parse stp_raw.csv and derive top-K predicted benchmark classes per compound.
+
+    Uses the same _assign_benchmark_classes() mapping logic as _evaluate_compound().
+
+    Returns:
+        { compound_name: {
+            "true_class": str,
+            "top1": [class, ...],   # classes from rank-1 prediction only
+            "topk": [class, ...],   # union of classes across ranks 1..K
+          }
+        }
+    """
+    raw: dict[str, dict] = {}
+
+    with open(raw_csv, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            name = row["compound_name"]
+            if name not in raw:
+                raw[name] = {"true_class": row["true_target_class"], "by_rank": {}}
+            rank = int(row.get("rank", 9999))
+            pred_dict = {
+                "chembl_id": row.get("chembl_id", ""),
+                "stp_class": row.get("stp_class", ""),
+            }
+            raw[name]["by_rank"].setdefault(rank, []).extend(
+                _assign_benchmark_classes(pred_dict)
+            )
+
+    result: dict[str, dict] = {}
+    for name, data in raw.items():
+        by_rank = data["by_rank"]
+        sorted_ranks = sorted(by_rank)
+
+        top1_classes = by_rank.get(sorted_ranks[0], []) if sorted_ranks else []
+        topk_classes: list[str] = []
+        seen: set[str] = set()
+        for r in sorted_ranks[:k]:
+            for cls in by_rank.get(r, []):
+                if cls not in seen:
+                    seen.add(cls)
+                    topk_classes.append(cls)
+
+        result[name] = {
+            "true_class": data["true_class"],
+            "top1":       top1_classes,
+            "topk":       topk_classes,
+        }
+
+    return result
+
+
 # ── Phase 2: Report generation ────────────────────────────────────────────────
 
 def generate_report(results: list[dict],
@@ -435,7 +503,7 @@ def generate_report(results: list[dict],
         for r in results:
             w.writerow({k: r.get(k, "") for k in w.fieldnames})
 
-    # ── Per-class summary ───────────────────────────────────────────────────
+    # ── Per-class retrieval stats ────────────────────────────────────────────
     class_stats: dict[str, dict] = {}
     for r in results:
         cls = r.get("true_class") or r.get("true_target_class") or "unknown"
@@ -447,17 +515,48 @@ def generate_report(results: list[dict],
         s["top3"]    += int(r.get("stp_top3", False))
         s["mrr_sum"] += float(r.get("stp_mrr", 0.0))
 
+    # ── Classification metrics (Precision / Recall / F1) from raw CSV ────────
+    # Derive the predicted class at each rank from stp_raw.csv using the same
+    # ChEMBL-ID + STP-class mapping used during _evaluate_compound().
+    stp_pred_sets: dict[str, dict] = {}
+    if _STP_RAW_CSV.exists():
+        stp_pred_sets = _load_stp_predicted_sets(_STP_RAW_CSV, k=3)
+
+    true_labels_stp:  list[str]       = []
+    pred_sets_k1_stp: list[list[str]] = []
+    pred_sets_k3_stp: list[list[str]] = []
+    for r in results:
+        name     = r.get("compound_name", "")
+        true_cls = r.get("true_class") or r.get("true_target_class") or "unknown"
+        pdata    = stp_pred_sets.get(name, {})
+        true_labels_stp.append(true_cls)
+        pred_sets_k1_stp.append(pdata.get("top1", []))
+        pred_sets_k3_stp.append(pdata.get("topk", []))
+
+    stp_metrics_k1 = compute_metrics(true_labels_stp, pred_sets_k1_stp)
+    stp_metrics_k3 = compute_metrics(true_labels_stp, pred_sets_k3_stp)
+    stp_macro_k1   = macro_avg(stp_metrics_k1)
+    stp_wmacro_k1  = weighted_avg(stp_metrics_k1)
+
+    # ── Per-class summary CSV (extended with classification metrics) ─────────
     with open(out_summary, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["target_class", "n", "top1", "top1_pct",
-                    "top3", "top3_pct", "mrr"])
+                    "top3", "top3_pct", "mrr",
+                    "precision", "recall", "specificity", "f1", "f2"])
         for cls, s in sorted(class_stats.items(), key=lambda x: -x[1]["top3"]):
-            n = s["n"]
+            n  = s["n"]
+            mk = stp_metrics_k1.get(cls)
             w.writerow([
                 cls, n,
                 s["top1"], f'{s["top1"]/n*100:.1f}%',
                 s["top3"], f'{s["top3"]/n*100:.1f}%',
                 f'{s["mrr_sum"]/n:.3f}',
+                f'{mk.precision:.4f}' if mk else "",
+                f'{mk.recall:.4f}'    if mk else "",
+                f'{mk.specificity:.4f}' if mk else "",
+                f'{mk.f1:.4f}'        if mk else "",
+                f'{mk.f2:.4f}'        if mk else "",
             ])
 
     # ── Plain-text report ───────────────────────────────────────────────────
@@ -489,8 +588,11 @@ def generate_report(results: list[dict],
         f"  Top-1 accuracy:          {total_top1}/{total}  ({total_top1/total*100:.1f}%)",
         f"  Top-3 accuracy:          {total_top3}/{total}  ({total_top3/total*100:.1f}%)",
         f"  Mean Reciprocal Rank:    {total_mrr:.3f}",
+        f"  Macro-avg F1  (Top-1):  {stp_macro_k1['f1']:.3f}",
+        f"  Macro-avg F2  (Top-1):  {stp_macro_k1['f2']:.3f}",
+        f"  Weighted-avg F1 (Top-1):{stp_wmacro_k1['f1']:.3f}",
         "",
-        "PER-CLASS BREAKDOWN",
+        "PER-CLASS RETRIEVAL (Top-1 / Top-3 / MRR)",
         "-" * 40,
         f"  {'Target class':<24}  {'N':>4}  {'Top-1':>6}  {'Top-3':>6}  {'MRR':>6}",
         "  " + "-" * 54,
@@ -501,6 +603,20 @@ def generate_report(results: list[dict],
             f"  {cls:<24}  {n:>4}  {s['top1']/n*100:>5.1f}%  "
             f"{s['top3']/n*100:>5.1f}%  {s['mrr_sum']/n:>6.3f}"
         )
+
+    if stp_pred_sets:
+        lines += [""]
+        lines += format_metrics_table(
+            stp_metrics_k1,
+            title="CLASSIFICATION METRICS (Top-1, one-vs-rest)",
+        )
+        lines += [""]
+        lines += format_metrics_table(
+            stp_metrics_k3,
+            title="CLASSIFICATION METRICS (Top-3, one-vs-rest)",
+            show_legend=False,
+        )
+
     lines += [
         "",
         "FILES",
@@ -518,6 +634,8 @@ def generate_report(results: list[dict],
     print(report_text)
     print(f"Report saved: {out_report}")
 
+    # Also expose STP metrics for comparison report
+    class_stats["_metrics_k1"] = stp_metrics_k1  # type: ignore[assignment]
     return class_stats
 
 
@@ -531,18 +649,20 @@ def generate_comparison(stp_stats: dict[str, dict],
         print(f"WARNING: {chem_results_csv} not found — skipping comparison.")
         return
 
-    # Load chem_target results
-    chem_stats: dict[str, dict] = {}
+    # ── Load chem_target results (retrieval stats + classification metrics) ──
+    chem_stats:  dict[str, dict] = {}
+    ct_true_labels:   list[str]       = []
+    ct_pred_sets_k1:  list[list[str]] = []
+    ct_pred_sets_k3:  list[list[str]] = []
+
     with open(chem_results_csv, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            # Column name may be true_target_class or true_class
             cls = (row.get("true_target_class") or
                    row.get("true_class") or "unknown")
             if cls not in chem_stats:
                 chem_stats[cls] = {"n": 0, "top1": 0, "top3": 0, "mrr_sum": 0.0}
             s = chem_stats[cls]
             s["n"] += 1
-            # top1_hit / top3_hit may be "True"/"False" or "1"/"0"
             t1 = row.get("top1_hit", "0")
             t3 = row.get("top3_hit", "0")
             s["top1"] += 1 if t1 in ("True", "1") else 0
@@ -552,17 +672,42 @@ def generate_comparison(stp_stats: dict[str, dict],
             except ValueError:
                 pass
 
-    # Compute totals
+            # Build predicted sets for chem_target classification metrics
+            raw_preds = [
+                str(row.get("top1", "") or ""),
+                str(row.get("top2", "") or ""),
+                str(row.get("top3", "") or ""),
+            ]
+            # Import alias mapping from run_benchmark via sys.path (already on path)
+            try:
+                from run_benchmark import _map_predicted_class as _map_ct
+            except ImportError:
+                _map_ct = lambda x: x  # type: ignore[assignment]
+            mapped = [_map_ct(p) for p in raw_preds]
+            ct_true_labels.append(cls)
+            ct_pred_sets_k1.append([mapped[0]] if mapped[0] else [])
+            ct_pred_sets_k3.append([p for p in mapped if p])
+
+    # ── chem_target classification metrics ───────────────────────────────────
+    ct_metrics_k1 = compute_metrics(ct_true_labels, ct_pred_sets_k1)
+    ct_macro_k1   = macro_avg(ct_metrics_k1)
+    ct_wmacro_k1  = weighted_avg(ct_metrics_k1)
+
+    # ── STP classification metrics (passed in via stp_stats["_metrics_k1"]) ──
+    stp_metrics_k1: dict[str, ClassMetrics] = stp_stats.pop("_metrics_k1", {})  # type: ignore[arg-type]
+    stp_macro_k1  = macro_avg(stp_metrics_k1)
+    stp_wmacro_k1 = weighted_avg(stp_metrics_k1)
+
+    # ── Retrieval totals ─────────────────────────────────────────────────────
     def _totals(stats: dict) -> tuple[int, int, int, float]:
-        n = sum(s["n"] for s in stats.values())
-        t1 = sum(s["top1"] for s in stats.values())
-        t3 = sum(s["top3"] for s in stats.values())
+        n   = sum(s["n"] for s in stats.values())
+        t1  = sum(s["top1"] for s in stats.values())
+        t3  = sum(s["top3"] for s in stats.values())
         mrr = sum(s["mrr_sum"] for s in stats.values()) / max(n, 1)
         return n, t1, t3, mrr
 
     sn, st1, st3, smrr = _totals(stp_stats)
     cn, ct1, ct3, cmrr = _totals(chem_stats)
-
     all_classes = sorted(set(stp_stats) | set(chem_stats))
 
     lines: list[str] = [
@@ -571,18 +716,23 @@ def generate_comparison(stp_stats: dict[str, dict],
         "=" * 80,
         "",
         "Both benchmarks use the same ChEMBL curated compound set (≥1 µM activity).",
-        "Evaluation: class-level Top-1/Top-3/MRR using ChEMBL ID + class label mapping.",
+        "Evaluation: class-level metrics using ChEMBL ID + class label mapping.",
         "",
         "OVERALL SUMMARY",
         "-" * 40,
-        f"  {'Metric':<26} {'chem_target':>12} {'STP':>12}",
-        "  " + "-" * 52,
-        f"  {'Total compounds':<26} {cn:>12} {sn:>12}",
-        f"  {'Top-1 accuracy':<26} {ct1/cn*100:>11.1f}% {st1/sn*100:>11.1f}%",
-        f"  {'Top-3 accuracy':<26} {ct3/cn*100:>11.1f}% {st3/sn*100:>11.1f}%",
-        f"  {'Mean Reciprocal Rank':<26} {cmrr:>12.3f} {smrr:>12.3f}",
+        f"  {'Metric':<28} {'chem_target':>12} {'STP':>12}",
+        "  " + "-" * 54,
+        f"  {'Total compounds':<28} {cn:>12} {sn:>12}",
+        f"  {'Top-1 accuracy':<28} {ct1/cn*100:>11.1f}% {st1/sn*100:>11.1f}%",
+        f"  {'Top-3 accuracy':<28} {ct3/cn*100:>11.1f}% {st3/sn*100:>11.1f}%",
+        f"  {'Mean Reciprocal Rank':<28} {cmrr:>12.3f} {smrr:>12.3f}",
+        f"  {'Macro-avg F1 (Top-1)':<28} {ct_macro_k1['f1']:>12.3f} {stp_macro_k1['f1']:>12.3f}",
+        f"  {'Macro-avg F2 (Top-1)':<28} {ct_macro_k1['f2']:>12.3f} {stp_macro_k1['f2']:>12.3f}",
+        f"  {'Weighted F1 (Top-1)':<28} {ct_wmacro_k1['f1']:>12.3f} {stp_wmacro_k1['f1']:>12.3f}",
+        f"  {'Macro Precision (Top-1)':<28} {ct_macro_k1['precision']:>12.3f} {stp_macro_k1['precision']:>12.3f}",
+        f"  {'Macro Recall (Top-1)':<28} {ct_macro_k1['recall']:>12.3f} {stp_macro_k1['recall']:>12.3f}",
         "",
-        "PER-CLASS BREAKDOWN",
+        "PER-CLASS RETRIEVAL (Top-1 / Top-3 / MRR)",
         "-" * 40,
         f"  {'Target class':<22}  {'N':>4}  "
         f"{'cT-1':>5}  {'cT-3':>5}  {'cMRR':>5}  |  "
@@ -606,6 +756,11 @@ def generate_comparison(stp_stats: dict[str, dict],
             f"{s['mrr_sum']/sn2:>5.3f}"
         )
 
+    # ── Side-by-side classification metrics table ─────────────────────────────
+    if ct_metrics_k1 and stp_metrics_k1:
+        lines += [""]
+        lines += format_comparison_metrics_table(ct_metrics_k1, stp_metrics_k1)
+
     lines += [
         "",
         "INTERPRETATION NOTES",
@@ -616,6 +771,8 @@ def generate_comparison(stp_stats: dict[str, dict],
         "    may be near-duplicates of STP training data, overestimating performance).",
         "  Both tools are best used together: chem_target provides mechanism-level",
         "    insights (which FGs drive binding); STP provides rapid ligand-based screening.",
+        "  F2 metric: β=2 version of F-score; weights recall 2× over precision.",
+        "    Recommended primary metric for drug target fishing (missing a target > FP).",
         "",
         "FILES",
         "-" * 40,

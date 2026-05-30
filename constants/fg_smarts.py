@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 31 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 32 functional groups.
+FG_SMARTS defines 33 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 34 functional groups.
 
 Used by
 -------
@@ -112,12 +112,21 @@ FG_SMARTS: dict[str, str] = {
     # ── Other nitrogen ────────────────────────────────────────────────────────
     "Nitrile":                  "C#N",
     "Nitro":                    "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
+    # Benzamidine: amidino group (-C(=NH)NH2) attached to an aromatic ring.
+    #   Arginine-mimicking pharmacophore; electrostatically complements the
+    #   Asp/Glu-lined S1 pocket of serine proteases (thrombin, trypsin, factor Xa).
+    #   Also present in some antiparasitic drugs. Not a guanidine (only 2 N on C).
+    "Benzamidine":              "[NX3H2][CX3](=[NX2H1])c",
 
     # ── Sulfur ────────────────────────────────────────────────────────────────
     # Thiol: nucleophilic, metal-coordinating (Cys active sites)
     # Sulfonamide: strong H-bond donor/acceptor, charged at physiological pH
+    # Methylsulfone: -SO2CH3 on aromatic ring. COX-2 selectivity pharmacophore
+    #   (celecoxib, rofecoxib, valdecoxib). Binds the hydrophilic side-pocket
+    #   unique to COX-2 (Val523→Ile in COX-1 blocks this pocket).
     "Thiol":                    "[SX2H]",
     "Sulfonamide":              "[SX4](=O)(=O)[NX3]",
+    "Methylsulfone":            "[CX4H3][SX4](=O)(=O)c",
 
     # ── Aromatic scaffolds ────────────────────────────────────────────────────
     # Phenyl ring: pure carbocyclic benzene — π-stacking, hydrophobic contacts.

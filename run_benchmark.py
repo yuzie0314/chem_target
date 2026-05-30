@@ -64,6 +64,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.target_predictor import predict as _predict
+from utils.metrics import compute_metrics, format_metrics_table, macro_avg, weighted_avg
 
 # ── ChEMBL API ─────────────────────────────────────────────────────────────────
 _CHEMBL_BASE = "https://www.ebi.ac.uk/chembl/api/data"
@@ -88,7 +89,7 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
     "cysteine protease":    ["CHEMBL4523", "CHEMBL3227"],         # cathepsin B, cathepsin L
     "nuclear receptor":     ["CHEMBL1871", "CHEMBL206",
                              "CHEMBL2034", "CHEMBL3151"],         # AR, ERα, GR, PR
-    "MAO":                  ["CHEMBL2366517", "CHEMBL2828"],      # MAO-A, MAO-B
+    "MAO":                  ["CHEMBL1951", "CHEMBL2039"],          # MAO-A (human), MAO-B (human)
     "HDAC":                 ["CHEMBL325", "CHEMBL1865",
                              "CHEMBL3192"],                       # HDAC1, HDAC6, HDAC8
     "adenosine receptor":   ["CHEMBL226", "CHEMBL251"],           # A1R, A2AR
@@ -99,7 +100,7 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
     "mTOR":                 ["CHEMBL2842"],                       # mTOR
     "tubulin":              ["CHEMBL379"],                        # tubulin α1A
     "VKORC1":               ["CHEMBL1953583"],                    # VKORC1
-    "topoisomerase":        ["CHEMBL3952", "CHEMBL3191"],         # Topo I, Topo II
+    "topoisomerase":        ["CHEMBL1781", "CHEMBL1806"],         # Topo I (human), Topo II-α (human)
     "ribosome":             ["CHEMBL612558"],                     # 50S ribosomal (bacterial)
     "xanthine oxidase":     ["CHEMBL1916"],                       # XO (xanthine dehydrogenase)
     "COMT":                 ["CHEMBL4203"],                       # COMT
@@ -497,10 +498,33 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    valid = df[df["warning"].fillna("").eq("") | df["n_fgs"].gt(0)]
+    valid  = df[df["warning"].fillna("").eq("") | df["n_fgs"].gt(0)]
     failed = df[df["warning"].fillna("").ne("") & df["n_fgs"].fillna(0).le(0)]
 
-    # ── Per-class table ──────────────────────────────────────────────────────
+    # ── Build predicted-class sets for each compound ─────────────────────────
+    # Apply the same alias mapping that run_predictions() uses so that the
+    # classes we compare against are in the canonical benchmark vocabulary.
+    true_labels:    list[str]        = []
+    pred_sets_k1:   list[list[str]]  = []   # top-1 only
+    pred_sets_k3:   list[list[str]]  = []   # top-1 .. top-3
+
+    for _, row in df.iterrows():
+        true_labels.append(str(row.get("true_target_class", "") or ""))
+        raw_preds = [
+            str(row.get("top1", "") or ""),
+            str(row.get("top2", "") or ""),
+            str(row.get("top3", "") or ""),
+        ]
+        mapped = [_map_predicted_class(p) for p in raw_preds]
+        pred_sets_k1.append([mapped[0]] if mapped[0] else [])
+        pred_sets_k3.append([p for p in mapped if p])
+
+    metrics_k1 = compute_metrics(true_labels, pred_sets_k1)
+    metrics_k3 = compute_metrics(true_labels, pred_sets_k3)
+    macro_k1   = macro_avg(metrics_k1)
+    wmacro_k1  = weighted_avg(metrics_k1)
+
+    # ── Per-class table (retrieval metrics) ──────────────────────────────────
     cls_rows = []
     for cls, grp in df.groupby("true_target_class"):
         n       = len(grp)
@@ -508,6 +532,7 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
         top1    = grp["top1_hit"].sum()
         top3    = grp["top3_hit"].sum()
         mrr     = grp["mrr"].mean()
+        mk1     = metrics_k1.get(cls)
         cls_rows.append({
             "target_class":    cls,
             "n_compounds":     n,
@@ -517,8 +542,14 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
             "mean_mrr":        round(mrr, 3),
             "top1_count":      int(top1),
             "top3_count":      int(top3),
+            # New classification metrics at Top-1
+            "precision":       round(mk1.precision,   4) if mk1 else 0.0,
+            "recall":          round(mk1.recall,      4) if mk1 else 0.0,
+            "specificity":     round(mk1.specificity, 4) if mk1 else 0.0,
+            "f1":              round(mk1.f1,          4) if mk1 else 0.0,
+            "f2":              round(mk1.f2,          4) if mk1 else 0.0,
         })
-    cls_df = pd.DataFrame(cls_rows).sort_values("top3_acc", ascending=False)
+    cls_df = pd.DataFrame(cls_rows).sort_values("f1", ascending=False)
     summary_csv = results_dir / f"{mode}_summary.csv"
     cls_df.to_csv(summary_csv, index=False)
 
@@ -551,15 +582,19 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
         f"  Top-1 accuracy:          {top1_all}/{n_all}  ({100*top1_all/n_all:.1f}%)",
         f"  Top-3 accuracy:          {top3_all}/{n_all}  ({100*top3_all/n_all:.1f}%)",
         f"  Mean Reciprocal Rank:    {mrr_all:.3f}",
+        f"  Macro-avg F1  (Top-1):  {macro_k1['f1']:.3f}",
+        f"  Macro-avg F2  (Top-1):  {macro_k1['f2']:.3f}",
+        f"  Weighted-avg F1 (Top-1):{wmacro_k1['f1']:.3f}",
         "",
-        "PER-CLASS BREAKDOWN",
+        "PER-CLASS RETRIEVAL (Top-1 / Top-3 / MRR)",
         "-" * 40,
     ]
 
     header = f"  {'Target class':<22} {'N':>4} {'Top-1':>7} {'Top-3':>7} {'MRR':>6}"
     lines.append(header)
     lines.append("  " + "-" * 50)
-    for _, r in cls_df.iterrows():
+    # Re-sort by top3_acc for retrieval table (traditional ordering)
+    for _, r in cls_df.sort_values("top3_acc", ascending=False).iterrows():
         lines.append(
             f"  {r['target_class']:<22} "
             f"{int(r['n_compounds']):>4} "
@@ -567,6 +602,18 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
             f"{r['top3_acc']:>7.1%} "
             f"{r['mean_mrr']:>6.3f}"
         )
+
+    lines += [""]
+    lines += format_metrics_table(
+        metrics_k1,
+        title="CLASSIFICATION METRICS (Top-1, one-vs-rest)",
+    )
+    lines += [""]
+    lines += format_metrics_table(
+        metrics_k3,
+        title="CLASSIFICATION METRICS (Top-3, one-vs-rest)",
+        show_legend=False,
+    )
 
     lines += [
         "",
