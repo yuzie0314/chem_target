@@ -53,8 +53,11 @@
       "smarts": "[#6][#6X3H0](=O)[#6]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:17087",
-      "description": "RC(=O)R' group (both neighbors are C). Pure H-bond acceptor. Targeted by oxidoreductases; electrophilic warhead in activated ketone inhibitors.",
-      "known_target_classes": [],
+      "description": "RC(=O)R' group (both neighbors are C). Pure H-bond acceptor. Targeted by oxidoreductases; electrophilic warhead in activated ketone inhibitors (e.g., alpha-keto amide warhead in NS3A/4A protease inhibitors). Cyclic ketones in HDAC inhibitors (romidepsin, trapoxin, spiruchostatin) coordinate zinc at the active site as a zinc-binding group in class I/II HDAC.",
+      "known_target_classes": [
+        "HDAC"
+      ],
+      "mechanistic_weight": 2.0,
       "source": "chebi"
     },
     "Aldehyde": {
@@ -274,7 +277,7 @@
       "known_target_classes": [
         "HDAC"
       ],
-      "mechanistic_weight": 2.0,
+      "mechanistic_weight": 2.5,
       "source": "manual"
     },
     "Acylsulfonamide": {
@@ -342,6 +345,7 @@
         "progesterone receptor",
         "cytochrome P450"
       ],
+      "mechanistic_weight": 2.0,
       "source": "manual"
     },
     "Halogen": {
