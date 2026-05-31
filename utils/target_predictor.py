@@ -195,17 +195,31 @@ def predict_target_classes(
 ) -> pd.DataFrame:
     """Vote target classes using known_target_classes from fg_database.json.
 
-    Each detected FG casts 1 vote to every target class it annotates.
-    When *use_idf* is True (default), votes are multiplied by IDF weight:
+    Scoring formula (with IDF and mechanistic weighting):
 
-        score(tc) = vote_count × log( N_all_FGs / N_FGs_annotating_tc )
+        score(tc) = IDF(tc) × Σ_{fg→tc} mechanistic_weight(fg)
 
-    This gives higher final scores to specific targets (e.g. VKORC1, tubulin,
-    antimalarial target) than to generic labels (e.g. kinase, GPCR) even when
-    the generic label accumulates more raw votes.
+    where:
+        IDF(tc)               = log( N_all_FGs / N_FGs_annotating_tc )
+        mechanistic_weight(fg) = fg_database.json field "mechanistic_weight"
+                                 (default 1.0 if absent)
+
+    Rationale:
+        IDF separates *specific* targets (few FGs annotate them) from *generic*
+        ones.  mechanistic_weight additionally promotes FGs that carry high
+        biological information regardless of how common they are — e.g.
+        Hydroxamate (Zn chelation warhead for HDAC) or α,β-unsat. carbonyl
+        (covalent Michael acceptor).  Together they implement the REFINE_SUGGESTION
+        principle: importance_weight × rarity_weight.
+
+    Tie-breaking:
+        Equal-score target classes are ranked by insertion order into the
+        accumulator dict, which mirrors the order of FG detection (FG_SMARTS
+        dict order) and the order of known_target_classes within each FG entry.
+        This makes tie-breaking deterministic and pharmacologically interpretable.
 
     Args:
-        fgs_detected: FG names matching FG_SMARTS keys.
+        fgs_detected: FG names matching FG_SMARTS keys (in detection order).
         fg_db:        Loaded functional_groups dict from fg_database.json.
         use_idf:      Apply IDF weighting (default True).
 
@@ -213,29 +227,33 @@ def predict_target_classes(
         DataFrame with columns: target_class | score | votes | evidence_fgs
         Sorted by score descending.  Empty DataFrame if no annotations found.
     """
-    votes: Counter = Counter()
+    # Use plain dict to accumulate mechanistic-weighted votes in insertion order.
+    # Insertion order is the tie-breaking key: the first tc that receives a vote
+    # (from the first detected FG that annotates it) appears first among equals.
+    weighted_votes: dict[str, float] = {}
     evidence: dict[str, list[str]] = defaultdict(list)
 
     idf: dict[str, float] = _compute_target_idf(fg_db) if use_idf else {}
 
     for fg in fgs_detected:
         entry = fg_db.get(fg, {})
+        mw: float = entry.get("mechanistic_weight", 1.0)
         for tc in entry.get("known_target_classes", []):
-            votes[tc] += 1
+            weighted_votes[tc] = weighted_votes.get(tc, 0.0) + mw
             evidence[tc].append(fg)
 
-    if not votes:
+    if not weighted_votes:
         return pd.DataFrame(
             columns=["target_class", "score", "votes", "evidence_fgs"]
         )
 
     rows = []
-    for tc, count in votes.most_common():
-        weight = idf.get(tc, 1.0) if use_idf else 1.0
+    for tc, wt_sum in weighted_votes.items():   # insertion order preserved
+        idf_weight = idf.get(tc, 1.0) if use_idf else 1.0
         rows.append({
             "target_class": tc,
-            "score": round(count * weight, 3),
-            "votes": count,
+            "score": round(wt_sum * idf_weight, 3),
+            "votes": round(wt_sum, 3),
             "evidence_fgs": ", ".join(evidence[tc]),
         })
 

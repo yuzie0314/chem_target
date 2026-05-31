@@ -231,6 +231,7 @@
       "known_target_classes": [
         "serine protease"
       ],
+      "mechanistic_weight": 3.0,
       "source": "manual"
     },
     "Thiol": {
@@ -252,6 +253,7 @@
       "known_target_classes": [
         "carbonic anhydrase"
       ],
+      "mechanistic_weight": 2.0,
       "source": "chebi"
     },
     "Methylsulfone": {
@@ -272,16 +274,18 @@
       "known_target_classes": [
         "HDAC"
       ],
+      "mechanistic_weight": 2.0,
       "source": "manual"
     },
     "Acylsulfonamide": {
       "smarts": "[CX3](=O)[NX3H][SX4](=O)(=O)",
       "pubchem_cid": null,
       "chebi_id": null,
-      "description": "RC(=O)-NH-S(=O)2-R' group. Distinguishes the cryptophycin / epothilone-class tubulin-binding macrolide pharmacophore from classical sulfonamides. The acyl-NH bridges C=O and SO2, forming a rigid template that positions the macrolide correctly for tubulin beta-subunit binding. Also a pharmacophore in some beta-lactamase inhibitors. Distinct from Sulfonamide (no C=O before N) and Amide (no S after N).",
+      "description": "RC(=O)-NH-S(=O)2-R' group. Distinguishes the cryptophycin / epothilone-class tubulin-binding macrolide pharmacophore from classical sulfonamides. The acyl-NH bridges C=O and SO2, forming a rigid template that positions the macrolide correctly for tubulin beta-subunit binding. Also a pharmacophore in some beta-lactamase inhibitors. Distinct from Sulfonamide (no C=O before N) and Amide (no S after N). Mechanistic role: scaffold geometry warhead for tubulin beta-subunit binding in macrolide natural products (cryptophycin, epothilone).",
       "known_target_classes": [
         "tubulin"
       ],
+      "mechanistic_weight": 2.0,
       "source": "manual"
     },
     "Phenyl ring": {

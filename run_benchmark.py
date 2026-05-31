@@ -96,12 +96,13 @@ TARGET_CLASS_MAP: dict[str, list[str]] = {
     "carbonic anhydrase":   ["CHEMBL205", "CHEMBL3729"],          # CA-II, CA-IX
     "CYP450":               ["CHEMBL340", "CHEMBL1952",
                              "CHEMBL3356"],                       # CYP3A4, CYP2D6, CYP2C9
-    "PDE":                  ["CHEMBL1827", "CHEMBL3769"],         # PDE5A, PDE4B
+    "PDE":                  ["CHEMBL1827", "CHEMBL275"],          # PDE5A (human), PDE4B (human)
     "mTOR":                 ["CHEMBL2842"],                       # mTOR
     "tubulin":              ["CHEMBL379"],                        # tubulin α1A
     "VKORC1":               ["CHEMBL1953583"],                    # VKORC1
     "topoisomerase":        ["CHEMBL1781", "CHEMBL1806"],         # Topo I (human), Topo II-α (human)
-    "ribosome":             ["CHEMBL612558"],                     # 50S ribosomal (bacterial)
+    "ribosome":             ["CHEMBL2363965", "CHEMBL2364096",    # 70S ribosome: M. tuberculosis,
+                             "CHEMBL2364103", "CHEMBL2363853"],   #   S. aureus, S. pyogenes, E. coli
     "xanthine oxidase":     ["CHEMBL1929"],                       # XO/XDH (human, UniProt P47989)
     "COMT":                 ["CHEMBL2023"],                       # COMT (human Homo sapiens)
 }

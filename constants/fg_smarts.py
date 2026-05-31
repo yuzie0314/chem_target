@@ -90,7 +90,10 @@ FG_SMARTS: dict[str, str] = {
     "Tertiary amine":           "[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]",
     # Imidazole: mimics histidine; coordinates metal ions. Key in CYP450
     # inhibitors (azole antifungals) and histamine receptor ligands.
-    "Imidazole":                "c1cnc[nH]1",
+    # SMARTS covers BOTH free imidazole (nH) AND N-substituted imidazole
+    # (n without H) to match azole antifungals such as ketoconazole,
+    # clotrimazole, miconazole — where position-1 N is alkylated.
+    "Imidazole":                "c1cnc[nH,n]1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
