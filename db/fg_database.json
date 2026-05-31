@@ -13,7 +13,6 @@
       "chebi_id": "CHEBI:33575",
       "description": "RC(=O)OH group. Strong H-bond donor + acceptor; ionisable (pKa ~4.5). Engages Asp/Glu/Arg/Lys in active sites via salt bridge or direct coordination.",
       "known_target_classes": [
-        "nuclear receptor",
         "carbonic anhydrase",
         "COX"
       ],
@@ -35,10 +34,7 @@
       "pubchem_cid": null,
       "chebi_id": "CHEBI:37622",
       "description": "RC(=O)NHR' group. Resonance-stabilised; H-bond donor + acceptor. Backbone motif of peptide substrates; preferred pharmacophore in protease/kinase inhibitors.",
-      "known_target_classes": [
-        "kinase",
-        "amide hydrolase"
-      ],
+      "known_target_classes": [],
       "source": "chebi"
     },
     "Lactone": {
@@ -48,7 +44,7 @@
       "description": "Cyclic ester (-C(=O)-O- in ring). Includes gamma-lactones (5-membered), delta-lactones (6-membered), and aromatic lactones (coumarins). Superset of Coumarin and Macrolide. Hydrolysed by lactonases and esterases; HDAC inhibitors often contain a hydroxamic acid or lactone zinc-binding group; some nuclear receptor ligands are lactones.",
       "known_target_classes": [
         "HDAC",
-        "nuclear receptor",
+        "kinase",
         "topoisomerase I"
       ],
       "source": "manual"
@@ -74,9 +70,7 @@
       "pubchem_cid": 157350,
       "chebi_id": "CHEBI:43176",
       "description": "Aliphatic -OH group (excludes phenols and acid/ester OH). H-bond donor + acceptor. Engaged by Ser/Thr/Tyr kinases; common in sugar and nucleotide ligands.",
-      "known_target_classes": [
-        "kinase"
-      ],
+      "known_target_classes": [],
       "source": "manual"
     },
     "Phenol": {
@@ -88,7 +82,8 @@
         "COX",
         "COMT",
         "nuclear receptor",
-        "estrogen receptor"
+        "estrogen receptor",
+        "GPCR"
       ],
       "source": "chebi"
     },
@@ -122,10 +117,7 @@
       "pubchem_cid": 3283,
       "chebi_id": "CHEBI:25698",
       "description": "C-O-C group (not carbonyl, not OH, not ester oxygen). Weak H-bond acceptor. Metabolised by CYP450 O-dealkylation; common in drug scaffolds for improving bioavailability.",
-      "known_target_classes": [
-        "cytochrome P450",
-        "drug metabolism enzyme"
-      ],
+      "known_target_classes": [],
       "source": "chebi"
     },
     "Primary amine": {
@@ -134,9 +126,7 @@
       "chebi_id": "CHEBI:32879",
       "description": "RNH2 group (excludes amide, sulfonamide, aromatic N). Ionisable (pKa ~10); strong H-bond donor. Substrate for MAO and amine oxidases; engages Asp/Glu by salt bridge.",
       "known_target_classes": [
-        "MAO",
-        "amine oxidase",
-        "GPCR"
+        "MAO"
       ],
       "source": "chebi"
     },
@@ -168,9 +158,7 @@
       "chebi_id": "CHEBI:24780",
       "description": "Five-membered aromatic heterocycle with N1 and N3. Mimics histidine; coordinates metal ions (Fe, Zn, Cu). Key motif in CYP450 inhibitors (azole antifungals) and histamine receptor ligands.",
       "known_target_classes": [
-        "histamine receptor",
-        "cytochrome P450",
-        "histidine kinase"
+        "cytochrome P450"
       ],
       "source": "chebi"
     },
@@ -183,7 +171,8 @@
         "serotonin receptor",
         "MAO",
         "GPCR",
-        "tubulin"
+        "tubulin",
+        "COX"
       ],
       "source": "manual"
     },
@@ -217,9 +206,10 @@
       "smarts": "C#N",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:18379",
-      "description": "RC≡N group. Electrophilic carbon; forms reversible covalent adduct with Cys/Ser. Used as warhead in covalent protease inhibitors (e.g. nirmatrelvir).",
+      "description": "RC≡N group. Electrophilic carbon; forms reversible covalent adduct with Cys/Ser. Used as warhead in covalent protease inhibitors (e.g. nirmatrelvir). Also present in nitrile-containing nuclear receptor ligands (e.g. enzalutamide for AR, some thyroid hormone receptor agonists).",
       "known_target_classes": [
-        "cysteine protease"
+        "cysteine protease",
+        "nuclear receptor"
       ],
       "source": "chebi"
     },
@@ -260,9 +250,7 @@
       "chebi_id": "CHEBI:35358",
       "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold. Note: acylsulfonamide (C(=O)-NH-SO2) is captured by the separate 'Acylsulfonamide' FG to avoid conflating the two pharmacophores.",
       "known_target_classes": [
-        "carbonic anhydrase",
-        "COX",
-        "kinase"
+        "carbonic anhydrase"
       ],
       "source": "chebi"
     },
@@ -282,8 +270,7 @@
       "chebi_id": "CHEBI:24650",
       "description": "RC(=O)NHOH group. Bidentate zinc-chelating warhead: both the C=O and N-OH oxygens coordinate the catalytic Zn2+ in HDAC and MMP active sites. Signature pharmacophore of FDA-approved HDAC inhibitors vorinostat (SAHA), belinostat, panobinostat, and pracinostat. Also present in matrix metalloproteinase inhibitors (batimastat, marimastat). Structurally distinct from Amide (no OH) and Ester (no NH).",
       "known_target_classes": [
-        "HDAC",
-        "MMP"
+        "HDAC"
       ],
       "source": "manual"
     },
@@ -319,7 +306,6 @@
       "known_target_classes": [
         "MAO",
         "cytochrome P450",
-        "serine protease",
         "anticoagulant target",
         "VKORC1"
       ],
@@ -358,10 +344,9 @@
       "smarts": "[F,Cl,Br,I]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:17792",
-      "description": "C-X bond (F, Cl, Br, I). F: metabolic block, lipophilicity tuning; Cl/Br: halogen bond donor to carbonyl O (backbone C=O of protein); I: bulky, used in X-ray structure work.",
+      "description": "C-X bond (F, Cl, Br, I). F: metabolic block, lipophilicity tuning; Cl/Br: halogen bond donor to carbonyl O (backbone C=O of protein); I: bulky, used in X-ray structure work. Halogens are common in nuclear receptor ligands (thyroid hormone receptor: T3/T4 have iodine; fluorinated retinoids; chlorinated estrogens) and CYP450 substrates.",
       "known_target_classes": [
-        "kinase",
-        "thyroid hormone receptor"
+        "cytochrome P450"
       ],
       "source": "chebi"
     },
