@@ -16,8 +16,8 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  36 functional groups
-  │  35 SMARTS patterns + Steroid(Py)   │  per molecule
+  │  FG Detection  (fg_detector.py)     │  37 functional groups
+  │  36 SMARTS patterns + Steroid(Py)   │  per molecule
   └─────────────────────────────────────┘
         │
         ▼
@@ -284,9 +284,9 @@ Mitigation strategies (for rigorous evaluation):
 
 ---
 
-## Functional groups (36 total)
+## Functional groups (37 total)
 
-### SMARTS-based (35)
+### SMARTS-based (36)
 
 | # | Name | SMARTS | Primary targets |
 |---|---|---|---|
@@ -305,22 +305,23 @@ Mitigation strategies (for rigorous evaluation):
 | 13 | Secondary amine | `[NX3H1;!$(NC=O);!$(NS=O);!$(Nc)]` | MAO, GPCR, ion channel |
 | 14 | Tertiary amine | `[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]` | GPCR, nicotinic receptor |
 | 15 | Imidazole | `c1cnc[nH]1` | CYP450, histamine receptor, metalloprotease |
-| 16 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
-| 17 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
-| 18 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
-| 19 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
-| 20 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
-| 21 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
-| 22 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase |
-| 23 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
-| 24 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
-| 25 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
-| 26 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
-| 27 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
-| 28 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
-| 29 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB |
-| 30 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
-| 31 | Methylenedioxy | `c1ccc2c(c1)OCO2` | CYP450, MAO |
+| 16 | Triazole | `n1cncn1` | CYP450 (triazole antifungals: fluconazole, voriconazole, mw=1.5) |
+| 17 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
+| 18 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
+| 19 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
+| 20 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
+| 21 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
+| 22 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
+| 23 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase |
+| 24 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
+| 25 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
+| 26 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
+| 27 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
+| 28 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
+| 29 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
+| 30 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB |
+| 31 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
+| 32 | Methylenedioxy | `c1ccc2c(c1)OCO2` | CYP450, MAO |
 
 > **Hierarchical overlaps** (by design): Xanthine ⊂ Purine · Coumarin ⊂ Lactone · Macrolide ⊂ Lactone · Indole ∩ Phenyl ring. Each level provides independent pharmacological resolution.
 
@@ -328,7 +329,7 @@ Mitigation strategies (for rigorous evaluation):
 
 | # | Name | Detection | Primary targets |
 |---|---|---|---|
-| 36 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
+| 37 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
 
 > **Why Python?** RDKit's `rN` SMARTS primitive uses the Smallest Set of Smallest Rings (SSSR). In the 6-6-6-5 steroid tetracycle, C-D ring junction atoms are assigned only to the smallest ring (r5), making `[r5;r6]` always fail. `IsAtomInRingOfSize()` is not SSSR-dependent and correctly identifies junction atoms.
 
@@ -350,11 +351,11 @@ Mitigation strategies (for rigorous evaluation):
 ```
 chem_target/
 ├── constants/
-│   ├── fg_smarts.py          # FG_SMARTS dict: 35 SMARTS patterns
+│   ├── fg_smarts.py          # FG_SMARTS dict: 36 SMARTS patterns (incl. Triazole)
 │   └── fg_names.py           # Legacy RDKit fr_* → human-readable (kept for compatibility)
 ├── db/                       # Auto-generated — never edit by hand
-│   ├── fg_database.json      # 35 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
-│   ├── fg_residue_table.csv  # 35 FG × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json      # 36 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
+│   ├── fg_residue_table.csv  # 36 FG × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json # 6 002 RCSB CCD SMILES entries
 │   ├── residue_3d_poses.json # 3 222 Cα + ligand centroid + distance records
 │   ├── local_env/*.sdf       # 86 representative FG–residue complex SDFs

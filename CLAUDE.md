@@ -257,8 +257,8 @@ conda environment name: `chem\_target`
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 35 FG SMARTS (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (35 entries, mechanistic_weight) | ✅ Done |
+| 36 FG SMARTS + Steroid Python = 37 total (`constants/fg_smarts.py`) | ✅ Done |
+| `db/fg_database.json` (36 entries incl. Triazole, mechanistic_weight) | ✅ Done |
 | `db/fg_residue_table.csv` (BioLiP rebuild) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
@@ -274,7 +274,8 @@ conda environment name: `chem\_target`
 | Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
 | Shape / physicochemical descriptors | 🔲 Future |
-| Merge dev/validation → master | 🔲 Pending |
+| Triazole SMARTS + BioLiP table rebuild | ✅ Done |
+| Merge dev/validation → master | ✅ Done |
 
 ---
 
@@ -306,6 +307,7 @@ conda environment name: `chem\_target`
 | Acylsulfonamide | 2.0 | tubulin | Macrolide warhead |
 | Ketone | 2.0 | HDAC | α-keto warhead in HDAC natural products |
 | Steroid | 2.0 | nuclear receptor (+ subtypes) | Steroidal scaffold → NR |
+| Triazole | 1.5 | cytochrome P450 | Triazole antifungal heme-Fe coordination (fluconazole-class) |
 | All others | 1.0 | — | Default |
 
 ---
@@ -316,7 +318,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 | Rule | Condition | Target | Bonus | Rationale |
 |---|---|---|---|---|
-| CYP450 azole | Imidazole + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat | cytochrome P450 | +2.0 | Azole antifungal heme-Fe coordination |
+| CYP450 azole | (Imidazole OR Triazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole antifungal heme-Fe coordination |
 | CYP450 aryl-COOH A | COOH + Phenyl + Halogen, no Amide, no Ether | cytochrome P450 | +1.5 | Minimal aryl-halide CYP substrate |
 | CYP450 aryl-COOH B | COOH + Amide + Ether + Phenyl + Halogen | cytochrome P450 | +1.5 | Extended aryl-halide CYP substrate |
 | CYP450 ether-amine | Ether + TertAmine + Phenyl + Halogen, no Lactone/Amide/Nitrile | cytochrome P450 | +1.5 | CYP3A4 scaffold (aprepitant-type) |
@@ -337,7 +339,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 1. **mTOR 5% (1/20)**: SIROLIMUS fixed. 19/20 are Ether/Amide/Phenyl ATP-competitive → NR wins (no mTOR-specific FG).
 2. **Adenosine receptor 25% (5/20)**: 15/20 failures have no Purine/Xanthine at all; generic Phenyl/Halogen → NR/tubulin.
-3. **CYP450 70% (14/20)**: 6 remaining failures all have zero CYP FGs (no Imidazole/Halogen/Epoxide/Nitro/Coumarin/Methylenedioxy/Steroid). Triazole class (fluconazole/voriconazole) needs new Triazole SMARTS.
+3. **CYP450 70% (14/20)**: 6 remaining failures all have zero CYP FGs (no Imidazole/Triazole/Halogen/Epoxide/Nitro/Coumarin/Methylenedioxy/Steroid). Triazole added but benchmark test set has no triazole antifungals.
 4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. Peptidomimetics look like NR/tubulin/GPCR.
 5. **Kinase 70% (14/20)**: 6 remaining. 2 stolen by CYP450 azole (Imidazole+Phenyl+Halogen, no distinguisher). 1 Steroid scaffold. 3 sparse.
 6. **NR 80% (16/20)**: 2 Acylsulfonamide→tubulin (irreconcilable without hurting tubulin). 2 purely structural.
@@ -357,13 +359,9 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 \## Next tasks (prioritised by ROI)
 
-\### Potentially achievable
+\### Next potential improvements
 
-1. **Add Triazole SMARTS** (`constants/fg_smarts.py`): fluconazole/voriconazole/itraconazole class can't trigger CYP450 azole rule (Triazole N3 ring doesn't match `c1cnc[nH,n]1`). Adding "Triazole" FG would fix these azole antifungals. Requires rebuilding BioLiP table. **Estimated +4-6 CYP450 hits.**
-
-\### Admin / housekeeping
-
-2. Merge `dev/validation` → `master`
-3. Update `db/fg_residue_table.csv` if new FGs are added
-4. SDF / MOL2 input support (`utils/io_handler.py`)
+1. **SDF / MOL2 input support** (`utils/io_handler.py`) — currently only CSV supported
+2. **Additional FG SMARTS** — consider Thiazole, Benzimidazole for broader CYP450 coverage
+3. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
 
