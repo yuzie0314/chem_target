@@ -266,11 +266,15 @@ conda environment name: `chem\_target`
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Benchmark Top-1: 137/220 = 62.3%** | ✅ Current best |
-| **Benchmark Top-3: 148/220 = 67.3%** | ✅ Current best |
+| **Benchmark Top-1: 149/220 = 67.7%** | ✅ Current best |
+| **Benchmark Top-3: 157/220 = 71.4%** | ✅ Current best |
+| CYP450 conditional motif scoring (azole rule) | ✅ Done |
+| Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide → suppress CYP450) | ✅ Done |
+| COX indole-sulfonamide motif | ✅ Done |
+| mTOR macrolide conditional motif | ✅ Done |
+| Adenosine receptor Purine bonus | ✅ Done |
+| Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
-| CYP450 conditional motif scoring | 🔲 Next |
-| Negative constraint rules (kinase/HDAC suppression) | 🔲 Next |
 | Shape / physicochemical descriptors | 🔲 Future |
 | Merge dev/validation → master | 🔲 Pending |
 
@@ -281,16 +285,16 @@ conda environment name: `chem\_target`
 | Class | Top-1 | Top-3 | Notes |
 |---|---|---|---|
 | GPCR | 20/20 = 100% | 20/20 | ✅ |
-| HDAC | 20/20 = 100% | 20/20 | ✅ Fixed by Ketone mw=2.0 |
+| HDAC | 20/20 = 100% | 20/20 | ✅ |
 | Carbonic anhydrase | 20/20 = 100% | 20/20 | ✅ |
-| Tubulin | 20/20 = 100% | 20/20 | ✅ Fixed by Acylsulfonamide mw=2.0 |
-| Nuclear receptor | 17/20 = 85% | 20/20 | 3 losses: Acylsulfonamide→tubulin conflict |
+| Tubulin | 20/20 = 100% | 20/20 | ✅ |
+| Nuclear receptor | 16/20 = 80% | 20/20 | 4 losses: 2× Acylsulfonamide→tubulin + 2× structural |
 | Serine protease | 12/20 = 60% | 12/20 | 8 failures: no Benzamidine FG signal |
-| COX | 11/20 = 55% | 12/20 | 9 failures: Sulfonamide→CA hijack |
-| Kinase | 8/20 = 40% | 12/20 | Structural limit: ATP-pocket overlap |
-| CYP450 | 7/20 = 35% | 8/20 | Structural limit: low IDF, weak FG signal |
-| Adenosine receptor | 4/20 = 20% | 5/20 | Structural limit: 16/20 non-purine |
-| mTOR | 0/20 = 0% | 0/20 | Structural limit: 19/20 ATP-competitive |
+| COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
+| Kinase | 13/20 = 65% | 14/20 | Fixed +5 by α,β-unsat covalent warhead motif |
+| CYP450 | 7/20 = 35% | 8/20 | Structural limit: 13 failures |
+| Adenosine receptor | 5/20 = 25% | 5/20 | Fixed +1 by Purine bonus; 15 structural |
+| mTOR | 1/20 = 5% | 1/20 | Fixed SIROLIMUS; 19 ATP-competitive structural |
 
 ---
 
@@ -308,12 +312,31 @@ conda environment name: `chem\_target`
 
 ---
 
+\## Conditional scoring rules (utils/target_predictor.py)
+
+All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
+
+| Rule | Condition | Target | Bonus | Rationale |
+|---|---|---|---|---|
+| CYP450 azole | Imidazole + {Phenyl/Ether/Halogen}, no Ketone/Purine/αβunsat | cytochrome P450 | +2.0 | Azole antifungal heme-Fe coordination |
+| COX indole-sulfonamide | Indole + Sulfonamide | COX | +2.0 | Indole scaffold + COX-2 selectivity pocket |
+| mTOR macrolide | Macrolide, no Thiol/αβunsat/Acylsulfonamide | mTOR | +2.0 | Rapamycin-class allosteric FKBP12 binding |
+| Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
+| Kinase warhead | α,β-unsat. carbonyl present | kinase | +0.5 | Covalent Michael acceptor warhead (EGFR etc.) |
+
+**Negative constraints** (suppress cytochrome P450 entirely):
+- Hydroxamate or Thiol present → Zn-chelation → HDAC/metalloprotease context
+- Acylsulfonamide present → tubulin macrolide warhead context
+
+---
+
 \## Known structural limitations (do NOT try to fix with mw tuning)
 
-1. **mTOR 0%**: SIROLIMUS Ketone+Lactone → HDAC score (5.838) > Macrolide→mTOR (4.266). Irreconcilable without conditional scoring.
-2. **Adenosine receptor 20%**: 16/20 compounds lack Purine/Imidazole/Xanthine scaffold.
-3. **Kinase 40%**: ATP-pocket FGs (Phenyl/Amide/Ether) shared with GPCR/NR/CYP450.
-4. **CYP450 35%**: IDF too low (n=7, IDF=1.609). Global Halogen mw boost tested and **rejected** (+2 CYP450 but -3 other classes, ROI negative).
+1. **mTOR 5% (1/20)**: Only SIROLIMUS (macrolide) fixed. 19/20 ATP-competitive inhibitors look like kinase/NR compounds with no mTOR-specific FG signal.
+2. **Adenosine receptor 25% (5/20)**: 15/20 failures lack Purine/Xanthine scaffold entirely; structurally indistinguishable from NR/tubulin/cysteine protease compounds.
+3. **CYP450 35% (7/20)**: 13 failures. 4 CYP450 compounds are aryl-COOH drugs (same FG profile as NSAIDs, predict COX). Triazole-class azoles (fluconazole, voriconazole) cannot be fixed without adding Triazole SMARTS.
+4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. These peptidomimetics (factor Xa, thrombin inhibitors) look like GPCR/NR/tubulin compounds.
+5. **Kinase 65% (13/20)**: 7 remaining failures. 2 stolen by CYP450 azole rule (Imidazole+Phenyl+Halogen, no distinguishing FG). 1 has steroidal scaffold (androgen wins). 4 are sparse.
 
 ---
 
@@ -321,45 +344,34 @@ conda environment name: `chem\_target`
 
 - **Halogen mw boost (1.2/1.5/2.0)**: All tested 2026-06-01. mw=1.2 → net 0; mw=1.5/2.0 → net -1 (gains 2 CYP450, loses 3: kinase+NR+HDAC). **Halogen is a promiscuity feature, not CYP450-specific.**
 - **Macrolide mw=1.2**: net 0. SIROLIMUS Ketone+Lactone HDAC score always beats Macrolide mTOR score.
+- **GPCR saturation (diminishing returns)**: Risky — GPCR compounds with Indole+Phenol would lose to serotonin receptor (IDF=3.555) when GPCR second vote is reduced below 3.555. Current 100% GPCR accuracy depends on full FG accumulation.
+- **Carboxylic acid → NR conditional**: Adding CA+acid → NR would break INDOMETHACIN (COX HIT) which has identical FG profile (CA+acid+Ether+Phenyl+Halogen) to the NR compound CHEMBL2323507.
 
 ---
 
-\## Next tasks (prioritised by ROI, from onboard/cyp450.md)
+\## Optimization history (2026-06-01)
 
-\### Highest ROI — implement first
+| Commit | Change | Top-1 | Top-3 | Delta |
+|---|---|---|---|---|
+| Baseline | IDF × mechanistic_weight | 137/220 = 62.3% | 148/220 = 67.3% | — |
+| c347f50 | CYP450 azole + COX Indole-Sulfonamide + neg constraints | 141/220 = 64.1% | 154/220 = 70.0% | +4/+6 |
+| 89dcc74 | Kinase: αβunsat exclude from CYP450 azole rule | 142/220 = 64.5% | 154/220 = 70.0% | +1/0 |
+| ba42d7c | mTOR macrolide conditional | 143/220 = 65.0% | 155/220 = 70.5% | +1/+1 |
+| 15b58e3 | Adenosine receptor Purine bonus | 144/220 = 65.5% | 155/220 = 70.5% | +1/0 |
+| 2ffcb0e | Kinase αβunsat covalent warhead bonus (+5 kinase) | 149/220 = 67.7% | 157/220 = 71.4% | +5/+2 |
 
-1. **CYP450 conditional motif scoring** (`onboard/cyp450.md` Phase 2)
-   - Replace single-FG Halogen/Imidazole scoring with combo rules:
-     - `Imidazole + hydrophobic tail` → CYP450
-     - `Halogenated phenyl + oxidation site` → CYP450
-   - Implementation: new `_cyp450_conditional_score()` in `utils/target_predictor.py`
+---
 
-2. **Negative constraint rules** (`onboard/cyp450.md` Phase 5)
-   - `flat hinge geometry + dual HBD/HBA + rigid aromatic` → suppress CYP450 (kinase filter)
-   - `Zn chelation (Hydroxamate/Thiol)` → suppress CYP450 (HDAC filter)
+\## Next tasks (prioritised by ROI)
 
-3. **GPCR saturation / diminishing return** (`onboard/cyp450.md` Phase 6 Step 11)
-   - First amine/aromatic match = 1.0, second = 0.3, third = 0.1
-   - Prevents GPCR from overwhelming mTOR/kinase with repeated generic FGs
+\### Potentially achievable
 
-\### Medium ROI
-
-4. **Shape descriptors** (Phase 3): PMI, radius of gyration → CYP450 = elongated ligand
-5. **Oxidation soft spot detector** (Phase 4): benzylic C, allylic position, terminal methyl
+1. **Add Triazole SMARTS** (`constants/fg_smarts.py`): fluconazole/voriconazole class (triazole antifungals) can't trigger CYP450 azole rule currently. Adding `c1cn[nH,n]1` as "Triazole" FG would cover these. Requires rebuilding BioLiP table.
+2. **Kinase Sulfonamide hijack** (CHEMBL5594833): TerAmine+Sulfonamide+Phenyl+Halogen → CA(5.724) steals this kinase compound. A conditional: Sulfonamide + TerAmine + no Indole → kinase bonus? Low ROI (+1 kinase).
 
 \### Admin / housekeeping
 
-6. Merge `dev/validation` → `master` once CYP450 conditional scoring is stable
-7. Update `db/fg_residue_table.csv` if new FGs are added
-8. SDF / MOL2 input support (`utils/io_handler.py`)
-
----
-
-\## Immediate tasks (in order)
-
-1\. Implement CYP450 conditional motif in `utils/target_predictor.py`
-2\. Implement negative constraints (kinase + HDAC suppression of CYP450)
-3\. Re-run `run_benchmark.py run` and compare against 137/220 baseline
-4\. If net positive: commit + push on `dev/validation`
-5\. Merge to `master` when satisfied
+3. Merge `dev/validation` → `master`
+4. Update `db/fg_residue_table.csv` if new FGs are added
+5. SDF / MOL2 input support (`utils/io_handler.py`)
 
