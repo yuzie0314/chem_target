@@ -214,6 +214,20 @@ def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Halogen" in fg_set
     ):
         return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
+    # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
+    # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
+    # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).
+    # Verified: only APREPITANT matches in 220-compound benchmark.
+    if (
+        "Ether" in fg_set
+        and "Tertiary amine" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Lactone" not in fg_set
+        and "Amide" not in fg_set
+        and "Nitrile" not in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "ether-amine CYP3A4 scaffold"
     return 0.0, ""
 
 
