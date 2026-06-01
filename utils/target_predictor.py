@@ -164,10 +164,16 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and a short evidence label string.  Returns (0.0, '') if rule does not fire.
     """
     fg_set = set(fgs_detected)
+    # Refined Ketone exclusion: only exclude when Ketone co-occurs with Amide or TertAmine.
+    # Rationale: HDAC inhibitors with Imidazole always have Amide+TertAmine (6/6 verified).
+    # CLIMBAZOLE (CYP450 inhibitor) has Ketone but lacks Amide/TertAmine, so it should pass.
+    ketone_hdac_context = "Ketone" in fg_set and (
+        "Amide" in fg_set or "Tertiary amine" in fg_set
+    )
     if (
         "Imidazole" in fg_set
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
-        and "Ketone" not in fg_set
+        and not ketone_hdac_context
         and "Purine" not in fg_set
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
     ):
