@@ -72,6 +72,7 @@ _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 _KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
+_CYP450_ARYL_HALIDE_COOH_BONUS: float = 1.5   # Aryl-halide carboxylic acid — CYP substrate (no Amide/Ether)
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -171,6 +172,36 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
     ):
         return _CYPCOND_AZOLE_BONUS, "azole motif"
+    return 0.0, ""
+
+
+def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for CYP450 when aryl-halide carboxylic acid is present without NSAID context.
+
+    Rule: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
+
+    Aryl halide carboxylic acids (halogenated arylpropionic/acetic acids) are CYP450
+    substrates metabolised via aromatic hydroxylation and O-dealkylation.  They are
+    systematically predicted as COX because Carboxylic acid + Phenyl accumulates
+    two COX votes (3.219) vs Halogen's single CYP450 vote (1.609).
+
+    The Amide/Ether exclusions prevent conflation with NSAID scaffolds:
+      • INDOMETHACIN (COX HIT): has Ether → excluded ✓
+      • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
+    Verified: 0 current HITs match COOH+Phenyl+Halogen without Amide/Ether.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    if (
+        "Carboxylic acid" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Amide" not in fg_set
+        and "Ether" not in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH CYP substrate"
     return 0.0, ""
 
 
@@ -412,6 +443,11 @@ def predict_target_classes(
     # ── Post-accumulation adjustments ────────────────────────────────────────
     # CYP450 conditional bonus (applied before IDF multiplication)
     cyp_bonus, cyp_label = _cyp450_conditional_bonus(fgs_detected)
+    # CYP450 aryl-halide COOH substrate bonus
+    cyp_ah_bonus, cyp_ah_label = _cyp450_arylhalide_cooh_bonus(fgs_detected)
+    if cyp_ah_bonus > 0.0:
+        cyp_bonus += cyp_ah_bonus
+        cyp_label = (cyp_label + " + " + cyp_ah_label).strip(" + ")
     if cyp_bonus > 0.0:
         weighted_votes["cytochrome P450"] = (
             weighted_votes.get("cytochrome P450", 0.0) + cyp_bonus
