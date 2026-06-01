@@ -164,6 +164,7 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
         and "Ketone" not in fg_set
         and "Purine" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
     ):
         return _CYPCOND_AZOLE_BONUS, "azole motif"
     return 0.0, ""
