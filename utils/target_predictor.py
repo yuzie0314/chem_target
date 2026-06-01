@@ -214,6 +214,20 @@ def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Halogen" in fg_set
     ):
         return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
+    # Rule D — Amide + Phenyl + Halogen without sulfonamide/ether/COOH (minimal CYP substrate)
+    # Catches e.g. CHEMBL3236364.  CA HITs all have Sulfonamide -> excluded.
+    # Bonus needs only +0.5 to exceed tubulin IDF (2.169) from Phenyl alone.
+    if (
+        "Amide" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Sulfonamide" not in fg_set
+        and "Carboxylic acid" not in fg_set
+        and "Imidazole" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set
+        and "Ether" not in fg_set
+    ):
+        return 0.5, "amide-halide CYP substrate"
     # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
     # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
     # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).
