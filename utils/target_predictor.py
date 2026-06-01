@@ -69,6 +69,7 @@ _CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
 _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
+_ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -218,6 +219,27 @@ def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Acylsulfonamide" not in fg_set
     ):
         return _MTOR_MACROLIDE_BONUS, "macrolide mTOR motif"
+    return 0.0, ""
+
+
+def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for adenosine receptor when Purine scaffold is present.
+
+    Rule: Purine detected → +0.5 bonus to adenosine receptor.
+
+    When Purine + Phenyl ring co-occur, kinase accrues two IDF-weighted votes
+    (Purine + Phenyl → 2.0 × 1.946 = 3.892) while adenosine receptor only gets
+    one vote from Purine (1.0 × 2.862 = 2.862).  The Purine scaffold is the
+    defining feature of most adenosine receptor ligands (xanthine derivatives,
+    adenosine analogs); this bonus prevents spurious kinase assignment solely
+    due to Phenyl co-occurrence.  All confirmed kinase benchmark HITs use Lactone
+    or α,β-unsat. carbonyl as their primary signal, not Purine.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    if "Purine" in set(fgs_detected):
+        return _ADENOSINE_PURINE_BONUS, "purine adenosine motif"
     return 0.0, ""
 
 
@@ -372,6 +394,14 @@ def predict_target_classes(
     if mtor_bonus > 0.0:
         weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
         evidence["mTOR"].append(f"[{mtor_label}]")
+
+    # Adenosine receptor conditional bonus
+    ado_bonus, ado_label = _adenosine_conditional_bonus(fgs_detected)
+    if ado_bonus > 0.0:
+        weighted_votes["adenosine receptor"] = (
+            weighted_votes.get("adenosine receptor", 0.0) + ado_bonus
+        )
+        evidence["adenosine receptor"].append(f"[{ado_label}]")
 
     # Negative constraints (suppress incompatible target classes in-place)
     _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
