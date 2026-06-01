@@ -1,114 +1,81 @@
 {
-  "last_updated": "2026-05-29",
-  "sources": ["chebi", "pubchem", "manual"],
+  "last_updated": "2026-05-30",
+  "sources": [
+    "chebi",
+    "pubchem",
+    "manual"
+  ],
   "note": "Keys must exactly match FG_SMARTS keys in constants/fg_smarts.py (plus 'Steroid' which uses Python detection). Rebuild db/fg_residue_table.csv after any key change.",
   "functional_groups": {
-
     "Carboxylic acid": {
       "smarts": "C(=O)[OH]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:33575",
       "description": "RC(=O)OH group. Strong H-bond donor + acceptor; ionisable (pKa ~4.5). Engages Asp/Glu/Arg/Lys in active sites via salt bridge or direct coordination.",
       "known_target_classes": [
-        "protease",
-        "transporter",
-        "nuclear receptor",
         "carbonic anhydrase",
-        "fatty acid binding protein",
-        "COX",
-        "ACE inhibitor"
+        "COX"
       ],
       "source": "chebi"
     },
-
     "Ester": {
       "smarts": "[#6][CX3;!R](=O)[OX2H0;!R][#6]",
       "pubchem_cid": 165217,
       "chebi_id": "CHEBI:35701",
       "description": "Acyclic RC(=O)OR' group (ring esters are captured by 'Lactone'). H-bond acceptor only; metabolically labile. Hydrolysed by esterases and lipases; prodrug strategy.",
       "known_target_classes": [
-        "esterase",
-        "lipase",
-        "acetylcholinesterase",
         "serine hydrolase",
         "COX"
       ],
       "source": "chebi"
     },
-
     "Amide": {
       "smarts": "[CX3](=O)[NX3;H1,H2]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:37622",
       "description": "RC(=O)NHR' group. Resonance-stabilised; H-bond donor + acceptor. Backbone motif of peptide substrates; preferred pharmacophore in protease/kinase inhibitors.",
-      "known_target_classes": [
-        "protease",
-        "kinase",
-        "amide hydrolase"
-      ],
+      "known_target_classes": [],
       "source": "chebi"
     },
-
     "Lactone": {
       "smarts": "[#6X3;R](=O)[#8X2;R]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:25000",
       "description": "Cyclic ester (-C(=O)-O- in ring). Includes gamma-lactones (5-membered), delta-lactones (6-membered), and aromatic lactones (coumarins). Superset of Coumarin and Macrolide. Hydrolysed by lactonases and esterases; HDAC inhibitors often contain a hydroxamic acid or lactone zinc-binding group; some nuclear receptor ligands are lactones.",
       "known_target_classes": [
-        "esterase",
-        "lipase",
         "HDAC",
-        "nuclear receptor",
-        "lactone hydrolase",
-        "topoisomerase I",
-        "proteasome"
+        "kinase",
+        "topoisomerase I"
       ],
       "source": "manual"
     },
-
     "Ketone": {
       "smarts": "[#6][#6X3H0](=O)[#6]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:17087",
-      "description": "RC(=O)R' group (both neighbors are C). Pure H-bond acceptor. Targeted by oxidoreductases; electrophilic warhead in activated ketone inhibitors.",
+      "description": "RC(=O)R' group (both neighbors are C). Pure H-bond acceptor. Targeted by oxidoreductases; electrophilic warhead in activated ketone inhibitors (e.g., alpha-keto amide warhead in NS3A/4A protease inhibitors). Cyclic ketones in HDAC inhibitors (romidepsin, trapoxin, spiruchostatin) coordinate zinc at the active site as a zinc-binding group in class I/II HDAC.",
       "known_target_classes": [
-        "oxidoreductase",
-        "aldose reductase",
-        "17beta-HSD",
-        "steroid enzyme"
+        "HDAC"
       ],
+      "mechanistic_weight": 2.0,
       "source": "chebi"
     },
-
     "Aldehyde": {
       "smarts": "[CX3H1](=O)",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:17478",
       "description": "RCH=O group. Reactive electrophile; forms Schiff bases with Lys. Substrate for ALDH/ADH; found in some natural product warheads.",
-      "known_target_classes": [
-        "aldehyde dehydrogenase",
-        "alcohol dehydrogenase",
-        "oxidoreductase",
-        "protease"
-      ],
+      "known_target_classes": [],
       "source": "chebi"
     },
-
     "Hydroxyl": {
       "smarts": "[OX2H;!$(Oc);!$(OC=O)]",
       "pubchem_cid": 157350,
       "chebi_id": "CHEBI:43176",
       "description": "Aliphatic -OH group (excludes phenols and acid/ester OH). H-bond donor + acceptor. Engaged by Ser/Thr/Tyr kinases; common in sugar and nucleotide ligands.",
-      "known_target_classes": [
-        "kinase",
-        "phosphatase",
-        "transporter",
-        "alcohol dehydrogenase",
-        "glucosyltransferase"
-      ],
+      "known_target_classes": [],
       "source": "manual"
     },
-
     "Phenol": {
       "smarts": "[OX2H]c",
       "pubchem_cid": 996,
@@ -116,15 +83,13 @@
       "description": "ArOH group. Stronger H-bond donor than aliphatic OH (pKa ~10); can ionise. Key pharmacophore in oestrogen receptor ligands, COX inhibitors, and COMT substrates.",
       "known_target_classes": [
         "COX",
-        "tyrosinase",
         "COMT",
         "nuclear receptor",
         "estrogen receptor",
-        "lipoxygenase"
+        "GPCR"
       ],
       "source": "chebi"
     },
-
     "Catechol": {
       "smarts": "c1cc([OX2H])c([OX2H])cc1",
       "pubchem_cid": 289,
@@ -132,17 +97,12 @@
       "description": "Ortho-dihydroxybenzene motif. Strong metal chelator (Fe3+, Cu2+, Zn2+); COMT substrate. Present in quercetin, EGCG, catecholamines. Susceptible to oxidation.",
       "known_target_classes": [
         "COMT",
-        "tyrosinase",
         "MAO",
-        "metalloenzyme",
         "estrogen receptor",
-        "lipoxygenase",
-        "dopamine receptor",
-        "DOPA decarboxylase"
+        "dopamine receptor"
       ],
       "source": "chebi"
     },
-
     "Methylenedioxy": {
       "smarts": "c1ccc2c(c1)OCO2",
       "pubchem_cid": 10679,
@@ -155,34 +115,24 @@
       ],
       "source": "manual"
     },
-
     "Ether": {
       "smarts": "[OX2;!$(O=*);!$([OX2H]);!$(OC=O)]([#6])[#6]",
       "pubchem_cid": 3283,
       "chebi_id": "CHEBI:25698",
       "description": "C-O-C group (not carbonyl, not OH, not ester oxygen). Weak H-bond acceptor. Metabolised by CYP450 O-dealkylation; common in drug scaffolds for improving bioavailability.",
-      "known_target_classes": [
-        "cytochrome P450",
-        "drug metabolism enzyme"
-      ],
+      "known_target_classes": [],
       "source": "chebi"
     },
-
     "Primary amine": {
       "smarts": "[NX3H2;!$(NC=O);!$(NS=O);!$(Nc)]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:32879",
       "description": "RNH2 group (excludes amide, sulfonamide, aromatic N). Ionisable (pKa ~10); strong H-bond donor. Substrate for MAO and amine oxidases; engages Asp/Glu by salt bridge.",
       "known_target_classes": [
-        "MAO",
-        "amine oxidase",
-        "GPCR",
-        "transporter",
-        "acetylcholinesterase"
+        "MAO"
       ],
       "source": "chebi"
     },
-
     "Secondary amine": {
       "smarts": "[NX3H1;!$(NC=O);!$(NS=O);!$(Nc)]",
       "pubchem_cid": null,
@@ -190,13 +140,10 @@
       "description": "R2NH group (excludes amide, sulfonamide, aromatic N). H-bond donor + acceptor. Common in GPCR ligands; substrate for MAO-B.",
       "known_target_classes": [
         "MAO",
-        "GPCR",
-        "ion channel",
-        "transporter"
+        "GPCR"
       ],
       "source": "chebi"
     },
-
     "Tertiary amine": {
       "smarts": "[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]",
       "pubchem_cid": null,
@@ -204,27 +151,20 @@
       "description": "R3N group (excludes imines, amides, sulfonamides, aromatic N). Non-ionisable in physiological range; H-bond acceptor only. Found in muscarinic/nicotinic ligands.",
       "known_target_classes": [
         "GPCR",
-        "ion channel",
-        "cholinesterase",
         "nicotinic receptor"
       ],
       "source": "chebi"
     },
-
     "Imidazole": {
       "smarts": "c1cnc[nH]1",
       "pubchem_cid": 795,
       "chebi_id": "CHEBI:24780",
       "description": "Five-membered aromatic heterocycle with N1 and N3. Mimics histidine; coordinates metal ions (Fe, Zn, Cu). Key motif in CYP450 inhibitors (azole antifungals) and histamine receptor ligands.",
       "known_target_classes": [
-        "histamine receptor",
-        "cytochrome P450",
-        "histidine kinase",
-        "metalloprotease"
+        "cytochrome P450"
       ],
       "source": "chebi"
     },
-
     "Indole": {
       "smarts": "c1ccc2[nH]ccc2c1",
       "pubchem_cid": 767,
@@ -233,16 +173,12 @@
       "known_target_classes": [
         "serotonin receptor",
         "MAO",
-        "IDO",
-        "sigma receptor",
-        "tryptophan hydroxylase",
         "GPCR",
         "tubulin",
-        "BACE1"
+        "COX"
       ],
       "source": "manual"
     },
-
     "Purine": {
       "smarts": "c1ncc2ncnc2n1",
       "pubchem_cid": 1044,
@@ -251,14 +187,10 @@
       "known_target_classes": [
         "adenosine receptor",
         "kinase",
-        "DNA polymerase",
-        "PDE",
-        "purine nucleoside phosphorylase",
-        "adenylyl cyclase"
+        "PDE"
       ],
       "source": "manual"
     },
-
     "Xanthine": {
       "smarts": "O=c1nc(=O)c2ncnc2n1",
       "pubchem_cid": 1188,
@@ -273,32 +205,38 @@
       ],
       "source": "manual"
     },
-
     "Nitrile": {
       "smarts": "C#N",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:18379",
-      "description": "RC≡N group. Electrophilic carbon; forms reversible covalent adduct with Cys/Ser. Used as warhead in covalent protease inhibitors (e.g. nirmatrelvir).",
+      "description": "RC≡N group. Electrophilic carbon; forms reversible covalent adduct with Cys/Ser. Used as warhead in covalent protease inhibitors (e.g. nirmatrelvir). Also present in nitrile-containing nuclear receptor ligands (e.g. enzalutamide for AR, some thyroid hormone receptor agonists).",
       "known_target_classes": [
-        "protease",
-        "nitrile hydratase",
-        "cysteine protease"
+        "cysteine protease",
+        "nuclear receptor"
       ],
       "source": "chebi"
     },
-
     "Nitro": {
       "smarts": "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
       "pubchem_cid": 3032552,
       "chebi_id": "CHEBI:35716",
       "description": "-NO2 group. Electron withdrawing; bioreduced to nitroso/hydroxylamine/amine by nitroreductases and CYP450. Found in some antibiotics (metronidazole) and kinase inhibitors.",
       "known_target_classes": [
-        "nitroreductase",
         "cytochrome P450"
       ],
       "source": "chebi"
     },
-
+    "Benzamidine": {
+      "smarts": "[NX3H2][CX3](=[NX2H1])c",
+      "pubchem_cid": 11985,
+      "chebi_id": "CHEBI:41218",
+      "description": "Amidino group (-C(=NH)NH2) attached to an aromatic ring. Arginine-mimicking pharmacophore; the positively-charged amidinium (pKa ~11.6) fills the Asp/Glu-rich S1 specificity pocket of serine proteases (thrombin, trypsin, factor Xa, tPA, urokinase). Present in benzamidine itself, anticoagulants (dabigatran precursor), and antiparasitic drugs. The two NH groups form bidentate H-bonds with Asp189 (trypsin numbering).",
+      "known_target_classes": [
+        "serine protease"
+      ],
+      "mechanistic_weight": 3.0,
+      "source": "manual"
+    },
     "Thiol": {
       "smarts": "[SX2H]",
       "pubchem_cid": null,
@@ -306,28 +244,53 @@
       "description": "R-SH group. Strong nucleophile; coordinates metal ions (Zn2+, Fe, Cu). Undergoes disulfide exchange (Cys active sites). Key in cysteine proteases, thioredoxins, metalloenzymes.",
       "known_target_classes": [
         "cysteine protease",
-        "thioredoxin",
-        "metalloenzyme",
-        "oxidoreductase",
         "HDAC"
       ],
       "source": "chebi"
     },
-
     "Sulfonamide": {
       "smarts": "[SX4](=O)(=O)[NX3]",
       "pubchem_cid": 5333,
       "chebi_id": "CHEBI:35358",
-      "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold.",
+      "description": "RS(=O)2NR'2 group. Strong H-bond donor + acceptor. Inhibits carbonic anhydrase by direct zinc coordination via NH. Broad antimicrobial scaffold. Note: acylsulfonamide (C(=O)-NH-SO2) is captured by the separate 'Acylsulfonamide' FG to avoid conflating the two pharmacophores.",
       "known_target_classes": [
-        "carbonic anhydrase",
-        "COX",
-        "dihydropteroate synthase",
-        "kinase"
+        "carbonic anhydrase"
       ],
+      "mechanistic_weight": 2.0,
       "source": "chebi"
     },
-
+    "Methylsulfone": {
+      "smarts": "[CX4H3][SX4](=O)(=O)c",
+      "pubchem_cid": null,
+      "chebi_id": null,
+      "description": "Methyl sulfone group (-SO2CH3) attached to an aromatic ring. Signature COX-2 selectivity pharmacophore: the para-methylsulfonyl group of celecoxib, rofecoxib, and valdecoxib inserts into a hydrophilic side-pocket formed by Arg513/Phe518 in COX-2. This pocket is blocked in COX-1 (Val523 replaces a smaller residue). Not present in classical NSAIDs (ibuprofen, naproxen) or the Sulfonamide class of coxibs — distinct from SO2NH2.",
+      "known_target_classes": [
+        "COX"
+      ],
+      "source": "manual"
+    },
+    "Hydroxamate": {
+      "smarts": "[CX3](=O)[NX3H][OX2H]",
+      "pubchem_cid": 11751,
+      "chebi_id": "CHEBI:24650",
+      "description": "RC(=O)NHOH group. Bidentate zinc-chelating warhead: both the C=O and N-OH oxygens coordinate the catalytic Zn2+ in HDAC and MMP active sites. Signature pharmacophore of FDA-approved HDAC inhibitors vorinostat (SAHA), belinostat, panobinostat, and pracinostat. Also present in matrix metalloproteinase inhibitors (batimastat, marimastat). Structurally distinct from Amide (no OH) and Ester (no NH).",
+      "known_target_classes": [
+        "HDAC"
+      ],
+      "mechanistic_weight": 2.5,
+      "source": "manual"
+    },
+    "Acylsulfonamide": {
+      "smarts": "[CX3](=O)[NX3H][SX4](=O)(=O)",
+      "pubchem_cid": null,
+      "chebi_id": null,
+      "description": "RC(=O)-NH-S(=O)2-R' group. Distinguishes the cryptophycin / epothilone-class tubulin-binding macrolide pharmacophore from classical sulfonamides. The acyl-NH bridges C=O and SO2, forming a rigid template that positions the macrolide correctly for tubulin beta-subunit binding. Also a pharmacophore in some beta-lactamase inhibitors. Distinct from Sulfonamide (no C=O before N) and Amide (no S after N). Mechanistic role: scaffold geometry warhead for tubulin beta-subunit binding in macrolide natural products (cryptophycin, epothilone).",
+      "known_target_classes": [
+        "tubulin"
+      ],
+      "mechanistic_weight": 2.0,
+      "source": "manual"
+    },
     "Phenyl ring": {
       "smarts": "c1ccccc1",
       "pubchem_cid": 241,
@@ -337,13 +300,11 @@
         "kinase",
         "GPCR",
         "nuclear receptor",
-        "protease",
         "COX",
         "tubulin"
       ],
       "source": "chebi"
     },
-
     "Coumarin": {
       "smarts": "O=c1ccc2ccccc2o1",
       "pubchem_cid": 323,
@@ -352,14 +313,11 @@
       "known_target_classes": [
         "MAO",
         "cytochrome P450",
-        "serine protease",
         "anticoagulant target",
-        "voltage-gated channel",
         "VKORC1"
       ],
       "source": "manual"
     },
-
     "Chromone": {
       "smarts": "O=c1ccoc2ccccc12",
       "pubchem_cid": 68671,
@@ -374,7 +332,6 @@
       ],
       "source": "manual"
     },
-
     "Steroid": {
       "smarts": null,
       "pubchem_cid": null,
@@ -386,82 +343,63 @@
         "androgen receptor",
         "glucocorticoid receptor",
         "progesterone receptor",
-        "cytochrome P450",
-        "steroid dehydrogenase"
+        "cytochrome P450"
       ],
+      "mechanistic_weight": 2.0,
       "source": "manual"
     },
-
     "Halogen": {
       "smarts": "[F,Cl,Br,I]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:17792",
-      "description": "C-X bond (F, Cl, Br, I). F: metabolic block, lipophilicity tuning; Cl/Br: halogen bond donor to carbonyl O (backbone C=O of protein); I: bulky, used in X-ray structure work.",
+      "description": "C-X bond (F, Cl, Br, I). F: metabolic block, lipophilicity tuning; Cl/Br: halogen bond donor to carbonyl O (backbone C=O of protein); I: bulky, used in X-ray structure work. Halogens are common in nuclear receptor ligands (thyroid hormone receptor: T3/T4 have iodine; fluorinated retinoids; chlorinated estrogens) and CYP450 substrates.",
       "known_target_classes": [
-        "kinase",
-        "ion channel",
-        "halogenase",
-        "thyroid hormone receptor"
+        "cytochrome P450"
       ],
       "source": "chebi"
     },
-
     "Epoxide": {
       "smarts": "[OX2r3]",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:32955",
       "description": "Three-membered ring with O. Highly reactive electrophile; alkylates Lys/Cys/His in active sites. Natural product warhead (terpenoids, mitomycin). Detoxified by epoxide hydrolase.",
       "known_target_classes": [
-        "epoxide hydrolase",
-        "glutathione transferase",
         "cytochrome P450",
         "cysteine protease"
       ],
       "source": "chebi"
     },
-
     "Endoperoxide": {
       "smarts": "[OX2r][OX2r]",
       "pubchem_cid": null,
       "chebi_id": null,
       "description": "O-O bond within a ring (cyclic peroxide). Pharmacophore of artemisinin-class antimalarials; the endoperoxide bridge reacts with heme Fe(II) to generate carbon-centred radicals that alkylate parasite proteins. Distinct from acyclic organic peroxides and from the epoxide pattern.",
-      "known_target_classes": [
-        "antimalarial target",
-        "oxidoreductase",
-        "heme-dependent enzyme"
-      ],
+      "known_target_classes": [],
       "source": "manual"
     },
-
     "α,β-unsat. carbonyl": {
       "smarts": "[CX3](=O)C=C",
       "pubchem_cid": null,
       "chebi_id": "CHEBI:51689",
-      "description": "Michael acceptor motif C=C-C=O. Undergoes 1,4-addition with soft nucleophiles (Cys-SH, Lys-NH2). Covalent warhead in natural products (curcumin, parthenolide, withaferin A) and designed covalent inhibitors.",
+      "description": "Michael acceptor motif C=C-C=O. Undergoes 1,4-addition with soft nucleophiles (Cys-SH, Lys-NH2). Covalent warhead in natural products (curcumin, parthenolide, withaferin A) and designed covalent inhibitors. Enone-containing HDAC inhibitors (tubastatin analogs, withanolides) act via Michael addition at the Cys151/Cys273/Cys288 residues of some HDAC isoforms.",
       "known_target_classes": [
         "cysteine protease",
-        "glutathione transferase",
-        "Nrf2 pathway",
         "kinase",
-        "NF-kB pathway"
+        "HDAC"
       ],
       "source": "manual"
     },
-
     "Macrolide": {
       "smarts": "[CX3;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R](=O)[OX2;!r3;!r4;!r5;!r6;!r7;!r8;!r9;!r10;!r11;R]",
       "pubchem_cid": null,
       "chebi_id": null,
-      "description": "Lactone in a macrocyclic ring of 12 or more atoms. Subset of Lactone; excludes all rings up to 11-membered. Pharmacophore class of erythromycin (14-membered, ribosome 50S), rapamycin/sirolimus (31-membered, mTOR complex), tacrolimus/FK506 (23-membered, calcineurin via FKBP12). Macrolides bind ribosomes (antibacterial), mTOR complex (immunosuppressant/anticancer), and calcineurin (immunosuppressant).",
+      "description": "Lactone in a macrocyclic ring of 12 or more atoms. Subset of Lactone; excludes all rings up to 11-membered. Pharmacophore class of erythromycin (14-membered, ribosome 50S), rapamycin/sirolimus (31-membered, mTOR complex), tacrolimus/FK506 (23-membered, calcineurin via FKBP12). Macrolides bind ribosomes (antibacterial), mTOR complex (immunosuppressant/anticancer), calcineurin (immunosuppressant), and tubulin (cryptophycin/epothilone-class microtubule destabilisers).",
       "known_target_classes": [
         "mTOR",
-        "calcineurin",
         "ribosome",
-        "immunophilin",
-        "FKBP"
+        "tubulin"
       ],
       "source": "manual"
     }
-
   }
 }

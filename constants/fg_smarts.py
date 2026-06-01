@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 31 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 32 functional groups.
+FG_SMARTS defines 35 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 36 functional groups.
 
 Used by
 -------
@@ -90,7 +90,10 @@ FG_SMARTS: dict[str, str] = {
     "Tertiary amine":           "[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]",
     # Imidazole: mimics histidine; coordinates metal ions. Key in CYP450
     # inhibitors (azole antifungals) and histamine receptor ligands.
-    "Imidazole":                "c1cnc[nH]1",
+    # SMARTS covers BOTH free imidazole (nH) AND N-substituted imidazole
+    # (n without H) to match azole antifungals such as ketoconazole,
+    # clotrimazole, miconazole — where position-1 N is alkylated.
+    "Imidazole":                "c1cnc[nH,n]1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
@@ -112,12 +115,36 @@ FG_SMARTS: dict[str, str] = {
     # ── Other nitrogen ────────────────────────────────────────────────────────
     "Nitrile":                  "C#N",
     "Nitro":                    "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
+    # Benzamidine: amidino group (-C(=NH)NH2) attached to an aromatic ring.
+    #   Arginine-mimicking pharmacophore; electrostatically complements the
+    #   Asp/Glu-lined S1 pocket of serine proteases (thrombin, trypsin, factor Xa).
+    #   Also present in some antiparasitic drugs. Not a guanidine (only 2 N on C).
+    "Benzamidine":              "[NX3H2][CX3](=[NX2H1])c",
 
     # ── Sulfur ────────────────────────────────────────────────────────────────
     # Thiol: nucleophilic, metal-coordinating (Cys active sites)
     # Sulfonamide: strong H-bond donor/acceptor, charged at physiological pH
+    # Methylsulfone: -SO2CH3 on aromatic ring. COX-2 selectivity pharmacophore
+    #   (celecoxib, rofecoxib, valdecoxib). Binds the hydrophilic side-pocket
+    #   unique to COX-2 (Val523→Ile in COX-1 blocks this pocket).
     "Thiol":                    "[SX2H]",
     "Sulfonamide":              "[SX4](=O)(=O)[NX3]",
+    "Methylsulfone":            "[CX4H3][SX4](=O)(=O)c",
+
+    # ── Metal-binding warheads ────────────────────────────────────────────────
+    # Hydroxamate: RC(=O)NHOH. Zinc-chelating warhead for HDAC inhibition
+    #   (vorinostat/SAHA, belinostat, panobinostat, pracinostat). Also present
+    #   in MMP/ADAM inhibitors (batimastat). The NH bridges to the Zn2+ via
+    #   the C=O and OH oxygens (bidentate chelation). The SMARTS requires the
+    #   NH to be present (H1 on N), distinguishing from N-alkyl hydroxamates and
+    #   acetohydroxamic acid (simpler molecules).
+    "Hydroxamate":              "[CX3](=O)[NX3H][OX2H]",
+    # Acylsulfonamide: RC(=O)-NH-S(=O)(=O)-R'. Distinguishes the cryptophycin /
+    #   epothilone-class tubulin-binding macrolide pharmacophore (C=O adjacent to
+    #   SO2 via NH) from classical RS(=O)2NHR sulfonamides. The NH is the key
+    #   difference: not a free amine but an acylamide N bridging C=O and SO2.
+    #   Also appears in some β-lactamase inhibitors and acylsulfonamide prodrugs.
+    "Acylsulfonamide":         "[CX3](=O)[NX3H][SX4](=O)(=O)",
 
     # ── Aromatic scaffolds ────────────────────────────────────────────────────
     # Phenyl ring: pure carbocyclic benzene — π-stacking, hydrophobic contacts.

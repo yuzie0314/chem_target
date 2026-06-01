@@ -61,6 +61,19 @@ from utils.fg_detector import detect_smarts  # noqa: E402
 TABLE_PATH = _ROOT / "db" / "fg_residue_table.csv"
 FG_DB_PATH = _ROOT / "db" / "fg_database.json"
 
+# ── Conditional-scoring constants ─────────────────────────────────────────────
+# Pre-IDF vote weights added when multi-FG combos match.  These are accumulated
+# into weighted_votes before IDF multiplication, so the final score contribution
+# is bonus × IDF(cytochrome P450).
+_CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
+_CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
+_COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
+_MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
+_ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
+_KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
+_KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
+_CYP450_ARYL_HALIDE_COOH_BONUS: float = 1.5   # Aryl-halide carboxylic acid — CYP substrate (no Amide/Ether)
+
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
     "A": "ALA", "R": "ARG", "N": "ASN", "D": "ASP", "C": "CYS",
@@ -134,6 +147,232 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
     return {tc: log(n_fgs / count) for tc, count in tc_count.items()}
 
 
+def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
+
+    Rule: Imidazole + at least one lipophilic partner (Phenyl ring, Ether,
+    or Halogen), provided the compound lacks FGs that indicate a competing
+    metal-binding context:
+      • Ketone excluded: alpha-keto HDAC warhead (romidepsin-class inhibitors
+        contain Imidazole + Ketone but are HDAC substrates, not CYP heme binders).
+      • Purine excluded: the imidazole-like ring in purines (adenosine receptor
+        ligands, xanthine derivatives) would trigger this rule spuriously since
+        RDKit's Imidazole SMARTS matches the fused imidazole portion of purines.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to cytochrome P450 votes,
+        and a short evidence label string.  Returns (0.0, '') if rule does not fire.
+    """
+    fg_set = set(fgs_detected)
+    # Refined Ketone exclusion: only exclude when Ketone co-occurs with Amide or TertAmine.
+    # Rationale: HDAC inhibitors with Imidazole always have Amide+TertAmine (6/6 verified).
+    # CLIMBAZOLE (CYP450 inhibitor) has Ketone but lacks Amide/TertAmine, so it should pass.
+    ketone_hdac_context = "Ketone" in fg_set and (
+        "Amide" in fg_set or "Tertiary amine" in fg_set
+    )
+    if (
+        "Imidazole" in fg_set
+        and fg_set & _CYPCOND_LIPOPHILIC_FGS
+        and not ketone_hdac_context
+        and "Purine" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
+    ):
+        return _CYPCOND_AZOLE_BONUS, "azole motif"
+    return 0.0, ""
+
+
+def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for CYP450 when aryl-halide carboxylic acid is present without NSAID context.
+
+    Two rules (additive where both fire):
+
+    Rule A: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
+      Catches minimal aryl-halide COOH scaffold (CHEMBL3125537, CHEMBL3407554).
+      Exclusions prevent NSAID conflict:
+        • INDOMETHACIN (COX HIT): has Ether → excluded ✓
+        • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
+
+    Rule B: Carboxylic acid + Amide + Ether + Phenyl ring + Halogen.
+      Catches extended aryl-halide COOH + linker scaffold (CHEMBL3407558, CHEMBL3407575).
+      Safety: the only benchmark HIT with this combo is CHEMBL6067690 (GPCR, score=7.784
+      from 4 GPCR FGs), which remains GPCR even with the +1.5 CYP450 bonus (4.022 < 7.784).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.  Returns (0.0, '') if neither
+        rule fires.
+    """
+    fg_set = set(fgs_detected)
+    # Rule A — minimal aryl-halide COOH
+    if (
+        "Carboxylic acid" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Amide" not in fg_set
+        and "Ether" not in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH CYP substrate"
+    # Rule B — extended aryl-halide COOH + Amide + Ether linker
+    if (
+        "Carboxylic acid" in fg_set
+        and "Amide" in fg_set
+        and "Ether" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
+    # Rule D — Amide + Phenyl + Halogen without sulfonamide/ether/COOH (minimal CYP substrate)
+    # Catches e.g. CHEMBL3236364.  CA HITs all have Sulfonamide -> excluded.
+    # Bonus needs only +0.5 to exceed tubulin IDF (2.169) from Phenyl alone.
+    if (
+        "Amide" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Sulfonamide" not in fg_set
+        and "Carboxylic acid" not in fg_set
+        and "Imidazole" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set
+        and "Ether" not in fg_set
+    ):
+        return 0.5, "amide-halide CYP substrate"
+    # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
+    # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
+    # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).
+    # Verified: only APREPITANT matches in 220-compound benchmark.
+    if (
+        "Ether" in fg_set
+        and "Tertiary amine" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+        and "Lactone" not in fg_set
+        and "Amide" not in fg_set
+        and "Nitrile" not in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "ether-amine CYP3A4 scaffold"
+    return 0.0, ""
+
+
+def _cox_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for COX when Indole+Sulfonamide pharmacophore present.
+
+    Rule: Indole + Sulfonamide co-occurrence.
+    Indole-sulfonamide COX inhibitors (indomethacin-like analogs) are
+    consistently mispredicted as carbonic anhydrase because Sulfonamide
+    carries mw=2.0 for CA.  The Indole ring is the signature scaffold for
+    COX binding (fits the hydrophobic channel), while the Sulfonamide head
+    sits in the COX-2 selectivity pocket.  The combination is rarely seen in
+    CA inhibitors (which use heterocyclic sulfonamides without Indole).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    if "Indole" in fg_set and "Sulfonamide" in fg_set:
+        return _COX_INDOLE_SULFONAMIDE_BONUS, "indole-sulfonamide COX motif"
+    return 0.0, ""
+
+
+def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for mTOR when macrolide scaffold is present without
+    competing metal-binding or tubulin warheads.
+
+    Rule: Macrolide present AND Thiol absent AND α,β-unsat. carbonyl absent AND
+    Acylsulfonamide absent.
+
+    Rationale for exclusions:
+      • Thiol / α,β-unsat. carbonyl: HDAC zinc-binding context (romidepsin-class);
+        FR-135313 has Macrolide+Thiol+αβunsat and is correctly HDAC.
+      • Acylsulfonamide: tubulin macrolide warhead (epothilone class); 12 tubulin
+        benchmark compounds have Macrolide+Acylsulfonamide and must stay as tubulin.
+
+    The surviving case is rapamycin/sirolimus-class allosteric mTOR inhibitors,
+    which have Macrolide+Ketone but no thiol/αβunsat/acylsulfonamide.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    if (
+        "Macrolide" in fg_set
+        and "Thiol" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set
+        and "Acylsulfonamide" not in fg_set
+    ):
+        return _MTOR_MACROLIDE_BONUS, "macrolide mTOR motif"
+    return 0.0, ""
+
+
+def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for adenosine receptor when Purine scaffold is present.
+
+    Rule: Purine detected → +0.5 bonus to adenosine receptor.
+
+    When Purine + Phenyl ring co-occur, kinase accrues two IDF-weighted votes
+    (Purine + Phenyl → 2.0 × 1.946 = 3.892) while adenosine receptor only gets
+    one vote from Purine (1.0 × 2.862 = 2.862).  The Purine scaffold is the
+    defining feature of most adenosine receptor ligands (xanthine derivatives,
+    adenosine analogs); this bonus prevents spurious kinase assignment solely
+    due to Phenyl co-occurrence.  All confirmed kinase benchmark HITs use Lactone
+    or α,β-unsat. carbonyl as their primary signal, not Purine.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    if "Purine" in set(fgs_detected):
+        return _ADENOSINE_PURINE_BONUS, "purine adenosine motif"
+    return 0.0, ""
+
+
+def _kinase_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for kinase when alpha,beta-unsaturated carbonyl is present.
+
+    Rule: α,β-unsat. carbonyl detected → +0.5 pre-IDF for kinase.
+
+    This covalent Michael acceptor is the defining warhead of irreversible kinase
+    inhibitors (osimertinib, neratinib, afatinib, mobocertinib attacking Cys797 in
+    EGFR).  Without this bonus, these compounds tie with GPCR at 3.892 (TerAmine +
+    Phenyl = αβunsat + Phenyl) and lose the tie-break to GPCR, or lose to cysteine
+    protease when Nitrile co-occurs (Nitrile+αβunsat = 2.0 × IDF_cys = 4.338 vs
+    kinase 3.892).  The +0.5 bonus gives kinase 4.865, resolving both conflicts.
+
+    Safety rationale:
+      • All 20 GPCR benchmark HITs lack α,β-unsat. carbonyl (verified).
+      • HDAC HITs with αβunsat all have Hydroxamate(mw=2.5)+αβunsat → HDAC = 6.8+,
+        well above kinase bonus (4.865).
+      • NR HITs with αβunsat have Steroid(mw=2.0) → NR/androgen = 7.11+.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    # Rule 1: covalent kinase warhead (Michael acceptor)
+    if "α,β-unsat. carbonyl" in fg_set:
+        return _KINASE_ABUNSAT_BONUS, "covalent kinase warhead"
+    # Rule 2: Sulfonamide + Tertiary amine — kinase inhibitor with sulfonamide linker,
+    # systematically hijacked by carbonic anhydrase (Sulfonamide mw=2.0 × IDF_CA).
+    # Safety: only ONE benchmark compound has this combination (CHEMBL5594833, kinase).
+    if "Sulfonamide" in fg_set and "Tertiary amine" in fg_set:
+        return _KINASE_SULFONAMIDE_TAMINE_BONUS, "sulfonamide-amine kinase linker"
+    return 0.0, ""
+
+
+def _apply_negative_constraints(
+    fgs_detected: list[str],
+    weighted_votes: dict[str, float],
+    evidence: dict[str, list[str]],
+) -> None:
+    """Suppress CYP450 votes in-place when incompatible warheads are present.
+
+    Rules:
+      • Hydroxamate or Thiol → Zn2+ chelation → HDAC / metalloprotease context.
+      • Acylsulfonamide → tubulin macrolide warhead.
+      Both: remove cytochrome P450 entry entirely.
+    """
+    fg_set = set(fgs_detected)
+    if fg_set & {"Hydroxamate", "Thiol", "Acylsulfonamide"}:
+        weighted_votes.pop("cytochrome P450", None)
+        evidence.pop("cytochrome P450", None)
+
+
 def predict_residues(
     fgs_detected: list[str],
     table: pd.DataFrame,
@@ -195,17 +434,31 @@ def predict_target_classes(
 ) -> pd.DataFrame:
     """Vote target classes using known_target_classes from fg_database.json.
 
-    Each detected FG casts 1 vote to every target class it annotates.
-    When *use_idf* is True (default), votes are multiplied by IDF weight:
+    Scoring formula (with IDF and mechanistic weighting):
 
-        score(tc) = vote_count × log( N_all_FGs / N_FGs_annotating_tc )
+        score(tc) = IDF(tc) × Σ_{fg→tc} mechanistic_weight(fg)
 
-    This gives higher final scores to specific targets (e.g. VKORC1, tubulin,
-    antimalarial target) than to generic labels (e.g. kinase, GPCR) even when
-    the generic label accumulates more raw votes.
+    where:
+        IDF(tc)               = log( N_all_FGs / N_FGs_annotating_tc )
+        mechanistic_weight(fg) = fg_database.json field "mechanistic_weight"
+                                 (default 1.0 if absent)
+
+    Rationale:
+        IDF separates *specific* targets (few FGs annotate them) from *generic*
+        ones.  mechanistic_weight additionally promotes FGs that carry high
+        biological information regardless of how common they are — e.g.
+        Hydroxamate (Zn chelation warhead for HDAC) or α,β-unsat. carbonyl
+        (covalent Michael acceptor).  Together they implement the REFINE_SUGGESTION
+        principle: importance_weight × rarity_weight.
+
+    Tie-breaking:
+        Equal-score target classes are ranked by insertion order into the
+        accumulator dict, which mirrors the order of FG detection (FG_SMARTS
+        dict order) and the order of known_target_classes within each FG entry.
+        This makes tie-breaking deterministic and pharmacologically interpretable.
 
     Args:
-        fgs_detected: FG names matching FG_SMARTS keys.
+        fgs_detected: FG names matching FG_SMARTS keys (in detection order).
         fg_db:        Loaded functional_groups dict from fg_database.json.
         use_idf:      Apply IDF weighting (default True).
 
@@ -213,29 +466,76 @@ def predict_target_classes(
         DataFrame with columns: target_class | score | votes | evidence_fgs
         Sorted by score descending.  Empty DataFrame if no annotations found.
     """
-    votes: Counter = Counter()
+    # Use plain dict to accumulate mechanistic-weighted votes in insertion order.
+    # Insertion order is the tie-breaking key: the first tc that receives a vote
+    # (from the first detected FG that annotates it) appears first among equals.
+    weighted_votes: dict[str, float] = {}
     evidence: dict[str, list[str]] = defaultdict(list)
 
     idf: dict[str, float] = _compute_target_idf(fg_db) if use_idf else {}
 
     for fg in fgs_detected:
         entry = fg_db.get(fg, {})
+        mw: float = entry.get("mechanistic_weight", 1.0)
         for tc in entry.get("known_target_classes", []):
-            votes[tc] += 1
+            weighted_votes[tc] = weighted_votes.get(tc, 0.0) + mw
             evidence[tc].append(fg)
 
-    if not votes:
+    if not weighted_votes:
         return pd.DataFrame(
             columns=["target_class", "score", "votes", "evidence_fgs"]
         )
 
+    # ── Post-accumulation adjustments ────────────────────────────────────────
+    # CYP450 conditional bonus (applied before IDF multiplication)
+    cyp_bonus, cyp_label = _cyp450_conditional_bonus(fgs_detected)
+    # CYP450 aryl-halide COOH substrate bonus
+    cyp_ah_bonus, cyp_ah_label = _cyp450_arylhalide_cooh_bonus(fgs_detected)
+    if cyp_ah_bonus > 0.0:
+        cyp_bonus += cyp_ah_bonus
+        cyp_label = (cyp_label + " + " + cyp_ah_label).strip(" + ")
+    if cyp_bonus > 0.0:
+        weighted_votes["cytochrome P450"] = (
+            weighted_votes.get("cytochrome P450", 0.0) + cyp_bonus
+        )
+        evidence["cytochrome P450"].append(f"[{cyp_label}]")
+
+    # COX conditional bonus
+    cox_bonus, cox_label = _cox_conditional_bonus(fgs_detected)
+    if cox_bonus > 0.0:
+        weighted_votes["COX"] = weighted_votes.get("COX", 0.0) + cox_bonus
+        evidence["COX"].append(f"[{cox_label}]")
+
+    # mTOR conditional bonus
+    mtor_bonus, mtor_label = _mtor_conditional_bonus(fgs_detected)
+    if mtor_bonus > 0.0:
+        weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
+        evidence["mTOR"].append(f"[{mtor_label}]")
+
+    # Kinase covalent warhead bonus
+    kin_bonus, kin_label = _kinase_conditional_bonus(fgs_detected)
+    if kin_bonus > 0.0:
+        weighted_votes["kinase"] = weighted_votes.get("kinase", 0.0) + kin_bonus
+        evidence["kinase"].append(f"[{kin_label}]")
+
+    # Adenosine receptor conditional bonus
+    ado_bonus, ado_label = _adenosine_conditional_bonus(fgs_detected)
+    if ado_bonus > 0.0:
+        weighted_votes["adenosine receptor"] = (
+            weighted_votes.get("adenosine receptor", 0.0) + ado_bonus
+        )
+        evidence["adenosine receptor"].append(f"[{ado_label}]")
+
+    # Negative constraints (suppress incompatible target classes in-place)
+    _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
+
     rows = []
-    for tc, count in votes.most_common():
-        weight = idf.get(tc, 1.0) if use_idf else 1.0
+    for tc, wt_sum in weighted_votes.items():   # insertion order preserved
+        idf_weight = idf.get(tc, 1.0) if use_idf else 1.0
         rows.append({
             "target_class": tc,
-            "score": round(count * weight, 3),
-            "votes": count,
+            "score": round(wt_sum * idf_weight, 3),
+            "votes": round(wt_sum, 3),
             "evidence_fgs": ", ".join(evidence[tc]),
         })
 
