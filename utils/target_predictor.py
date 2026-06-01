@@ -68,6 +68,7 @@ FG_DB_PATH = _ROOT / "db" / "fg_database.json"
 _CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
 _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
+_MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -187,6 +188,36 @@ def _cox_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     fg_set = set(fgs_detected)
     if "Indole" in fg_set and "Sulfonamide" in fg_set:
         return _COX_INDOLE_SULFONAMIDE_BONUS, "indole-sulfonamide COX motif"
+    return 0.0, ""
+
+
+def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for mTOR when macrolide scaffold is present without
+    competing metal-binding or tubulin warheads.
+
+    Rule: Macrolide present AND Thiol absent AND α,β-unsat. carbonyl absent AND
+    Acylsulfonamide absent.
+
+    Rationale for exclusions:
+      • Thiol / α,β-unsat. carbonyl: HDAC zinc-binding context (romidepsin-class);
+        FR-135313 has Macrolide+Thiol+αβunsat and is correctly HDAC.
+      • Acylsulfonamide: tubulin macrolide warhead (epothilone class); 12 tubulin
+        benchmark compounds have Macrolide+Acylsulfonamide and must stay as tubulin.
+
+    The surviving case is rapamycin/sirolimus-class allosteric mTOR inhibitors,
+    which have Macrolide+Ketone but no thiol/αβunsat/acylsulfonamide.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    if (
+        "Macrolide" in fg_set
+        and "Thiol" not in fg_set
+        and "α,β-unsat. carbonyl" not in fg_set
+        and "Acylsulfonamide" not in fg_set
+    ):
+        return _MTOR_MACROLIDE_BONUS, "macrolide mTOR motif"
     return 0.0, ""
 
 
@@ -335,6 +366,12 @@ def predict_target_classes(
     if cox_bonus > 0.0:
         weighted_votes["COX"] = weighted_votes.get("COX", 0.0) + cox_bonus
         evidence["COX"].append(f"[{cox_label}]")
+
+    # mTOR conditional bonus
+    mtor_bonus, mtor_label = _mtor_conditional_bonus(fgs_detected)
+    if mtor_bonus > 0.0:
+        weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
+        evidence["mTOR"].append(f"[{mtor_label}]")
 
     # Negative constraints (suppress incompatible target classes in-place)
     _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
