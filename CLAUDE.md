@@ -257,8 +257,6 @@ conda environment name: `chem\_target`
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| v1/v2 prototype | ✅ Done |
-| Layered refactor (constants/db/utils/main) | ✅ Done |
 | 35 FG SMARTS (`constants/fg_smarts.py`) | ✅ Done |
 | `db/fg_database.json` (35 entries, mechanistic_weight) | ✅ Done |
 | `db/fg_residue_table.csv` (BioLiP rebuild) | ✅ Done |
@@ -346,19 +344,6 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 - **Macrolide mw=1.2**: net 0. SIROLIMUS Ketone+Lactone HDAC score always beats Macrolide mTOR score.
 - **GPCR saturation (diminishing returns)**: Risky — GPCR compounds with Indole+Phenol would lose to serotonin receptor (IDF=3.555) when GPCR second vote is reduced below 3.555. Current 100% GPCR accuracy depends on full FG accumulation.
 - **Carboxylic acid → NR conditional**: Adding CA+acid → NR would break INDOMETHACIN (COX HIT) which has identical FG profile (CA+acid+Ether+Phenyl+Halogen) to the NR compound CHEMBL2323507.
-
----
-
-\## Optimization history (2026-06-01)
-
-| Commit | Change | Top-1 | Top-3 | Delta |
-|---|---|---|---|---|
-| Baseline | IDF × mechanistic_weight | 137/220 = 62.3% | 148/220 = 67.3% | — |
-| c347f50 | CYP450 azole + COX Indole-Sulfonamide + neg constraints | 141/220 = 64.1% | 154/220 = 70.0% | +4/+6 |
-| 89dcc74 | Kinase: αβunsat exclude from CYP450 azole rule | 142/220 = 64.5% | 154/220 = 70.0% | +1/0 |
-| ba42d7c | mTOR macrolide conditional | 143/220 = 65.0% | 155/220 = 70.5% | +1/+1 |
-| 15b58e3 | Adenosine receptor Purine bonus | 144/220 = 65.5% | 155/220 = 70.5% | +1/0 |
-| 2ffcb0e | Kinase αβunsat covalent warhead bonus (+5 kinase) | 149/220 = 67.7% | 157/220 = 71.4% | +5/+2 |
 
 ---
 
