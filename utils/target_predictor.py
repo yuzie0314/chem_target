@@ -70,6 +70,7 @@ _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Ha
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
+_KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -243,6 +244,32 @@ def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     return 0.0, ""
 
 
+def _kinase_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus for kinase when alpha,beta-unsaturated carbonyl is present.
+
+    Rule: α,β-unsat. carbonyl detected → +0.5 pre-IDF for kinase.
+
+    This covalent Michael acceptor is the defining warhead of irreversible kinase
+    inhibitors (osimertinib, neratinib, afatinib, mobocertinib attacking Cys797 in
+    EGFR).  Without this bonus, these compounds tie with GPCR at 3.892 (TerAmine +
+    Phenyl = αβunsat + Phenyl) and lose the tie-break to GPCR, or lose to cysteine
+    protease when Nitrile co-occurs (Nitrile+αβunsat = 2.0 × IDF_cys = 4.338 vs
+    kinase 3.892).  The +0.5 bonus gives kinase 4.865, resolving both conflicts.
+
+    Safety rationale:
+      • All 20 GPCR benchmark HITs lack α,β-unsat. carbonyl (verified).
+      • HDAC HITs with αβunsat all have Hydroxamate(mw=2.5)+αβunsat → HDAC = 6.8+,
+        well above kinase bonus (4.865).
+      • NR HITs with αβunsat have Steroid(mw=2.0) → NR/androgen = 7.11+.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    if "α,β-unsat. carbonyl" in set(fgs_detected):
+        return _KINASE_ABUNSAT_BONUS, "covalent kinase warhead"
+    return 0.0, ""
+
+
 def _apply_negative_constraints(
     fgs_detected: list[str],
     weighted_votes: dict[str, float],
@@ -394,6 +421,12 @@ def predict_target_classes(
     if mtor_bonus > 0.0:
         weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
         evidence["mTOR"].append(f"[{mtor_label}]")
+
+    # Kinase covalent warhead bonus
+    kin_bonus, kin_label = _kinase_conditional_bonus(fgs_detected)
+    if kin_bonus > 0.0:
+        weighted_votes["kinase"] = weighted_votes.get("kinase", 0.0) + kin_bonus
+        evidence["kinase"].append(f"[{kin_label}]")
 
     # Adenosine receptor conditional bonus
     ado_bonus, ado_label = _adenosine_conditional_bonus(fgs_detected)
