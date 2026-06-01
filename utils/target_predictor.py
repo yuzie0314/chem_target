@@ -61,6 +61,14 @@ from utils.fg_detector import detect_smarts  # noqa: E402
 TABLE_PATH = _ROOT / "db" / "fg_residue_table.csv"
 FG_DB_PATH = _ROOT / "db" / "fg_database.json"
 
+# ── Conditional-scoring constants ─────────────────────────────────────────────
+# Pre-IDF vote weights added when multi-FG combos match.  These are accumulated
+# into weighted_votes before IDF multiplication, so the final score contribution
+# is bonus × IDF(cytochrome P450).
+_CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
+_CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
+_COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
+
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
     "A": "ALA", "R": "ARG", "N": "ASN", "D": "ASP", "C": "CYS",
@@ -132,6 +140,71 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
         for tc in entry.get("known_target_classes", []):
             tc_count[tc] += 1
     return {tc: log(n_fgs / count) for tc, count in tc_count.items()}
+
+
+def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
+
+    Rule: Imidazole + at least one lipophilic partner (Phenyl ring, Ether,
+    or Halogen), provided the compound lacks FGs that indicate a competing
+    metal-binding context:
+      • Ketone excluded: alpha-keto HDAC warhead (romidepsin-class inhibitors
+        contain Imidazole + Ketone but are HDAC substrates, not CYP heme binders).
+      • Purine excluded: the imidazole-like ring in purines (adenosine receptor
+        ligands, xanthine derivatives) would trigger this rule spuriously since
+        RDKit's Imidazole SMARTS matches the fused imidazole portion of purines.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to cytochrome P450 votes,
+        and a short evidence label string.  Returns (0.0, '') if rule does not fire.
+    """
+    fg_set = set(fgs_detected)
+    if (
+        "Imidazole" in fg_set
+        and fg_set & _CYPCOND_LIPOPHILIC_FGS
+        and "Ketone" not in fg_set
+        and "Purine" not in fg_set
+    ):
+        return _CYPCOND_AZOLE_BONUS, "azole motif"
+    return 0.0, ""
+
+
+def _cox_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for COX when Indole+Sulfonamide pharmacophore present.
+
+    Rule: Indole + Sulfonamide co-occurrence.
+    Indole-sulfonamide COX inhibitors (indomethacin-like analogs) are
+    consistently mispredicted as carbonic anhydrase because Sulfonamide
+    carries mw=2.0 for CA.  The Indole ring is the signature scaffold for
+    COX binding (fits the hydrophobic channel), while the Sulfonamide head
+    sits in the COX-2 selectivity pocket.  The combination is rarely seen in
+    CA inhibitors (which use heterocyclic sulfonamides without Indole).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight and evidence label.
+    """
+    fg_set = set(fgs_detected)
+    if "Indole" in fg_set and "Sulfonamide" in fg_set:
+        return _COX_INDOLE_SULFONAMIDE_BONUS, "indole-sulfonamide COX motif"
+    return 0.0, ""
+
+
+def _apply_negative_constraints(
+    fgs_detected: list[str],
+    weighted_votes: dict[str, float],
+    evidence: dict[str, list[str]],
+) -> None:
+    """Suppress CYP450 votes in-place when incompatible warheads are present.
+
+    Rules:
+      • Hydroxamate or Thiol → Zn2+ chelation → HDAC / metalloprotease context.
+      • Acylsulfonamide → tubulin macrolide warhead.
+      Both: remove cytochrome P450 entry entirely.
+    """
+    fg_set = set(fgs_detected)
+    if fg_set & {"Hydroxamate", "Thiol", "Acylsulfonamide"}:
+        weighted_votes.pop("cytochrome P450", None)
+        evidence.pop("cytochrome P450", None)
 
 
 def predict_residues(
@@ -246,6 +319,24 @@ def predict_target_classes(
         return pd.DataFrame(
             columns=["target_class", "score", "votes", "evidence_fgs"]
         )
+
+    # ── Post-accumulation adjustments ────────────────────────────────────────
+    # CYP450 conditional bonus (applied before IDF multiplication)
+    cyp_bonus, cyp_label = _cyp450_conditional_bonus(fgs_detected)
+    if cyp_bonus > 0.0:
+        weighted_votes["cytochrome P450"] = (
+            weighted_votes.get("cytochrome P450", 0.0) + cyp_bonus
+        )
+        evidence["cytochrome P450"].append(f"[{cyp_label}]")
+
+    # COX conditional bonus
+    cox_bonus, cox_label = _cox_conditional_bonus(fgs_detected)
+    if cox_bonus > 0.0:
+        weighted_votes["COX"] = weighted_votes.get("COX", 0.0) + cox_bonus
+        evidence["COX"].append(f"[{cox_label}]")
+
+    # Negative constraints (suppress incompatible target classes in-place)
+    _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
 
     rows = []
     for tc, wt_sum in weighted_votes.items():   # insertion order preserved
