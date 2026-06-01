@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 35 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 36 functional groups.
+FG_SMARTS defines 36 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 37 functional groups.
 
 Used by
 -------
@@ -94,6 +94,16 @@ FG_SMARTS: dict[str, str] = {
     # (n without H) to match azole antifungals such as ketoconazole,
     # clotrimazole, miconazole — where position-1 N is alkylated.
     "Imidazole":                "c1cnc[nH,n]1",
+    # Triazole: 5-membered aromatic ring with 3 N atoms (1,2,4-triazole pattern
+    #   n-c-n-c-n).  Covers BOTH N-H (1H-triazole) AND N-substituted triazoles.
+    #   Key scaffold in triazole antifungals (fluconazole, voriconazole, itraconazole,
+    #   posaconazole) that coordinate the heme iron of fungal CYP51 (lanosterol
+    #   14α-demethylase) via the free N of the triazole ring.  Distinct from Imidazole
+    #   (2N in ring) and Purine (fused bicyclic with 4N).
+    #   SMARTS `n1cncn1` matches the 1,2,4-triazole pattern (n-c-n-c-n connectivity)
+    #   and was validated on fluconazole, voriconazole (MATCH) and clotrimazole,
+    #   metronidazole, omeprazole, purine compounds (NO MATCH).
+    "Triazole":                 "n1cncn1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).

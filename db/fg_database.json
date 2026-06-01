@@ -155,6 +155,17 @@
       ],
       "source": "chebi"
     },
+    "Triazole": {
+      "smarts": "n1cncn1",
+      "pubchem_cid": 70761,
+      "chebi_id": "CHEBI:36907",
+      "description": "Five-membered aromatic ring with three N atoms (1,2,4-triazole n-c-n-c-n pattern). Covers N-H and N-substituted triazoles. Key pharmacophore in triazole antifungals (fluconazole, voriconazole, itraconazole, posaconazole) that coordinate fungal CYP51 heme iron via the free triazole N, inhibiting lanosterol 14α-demethylase.",
+      "known_target_classes": [
+        "cytochrome P450"
+      ],
+      "mechanistic_weight": 1.5,
+      "source": "manual"
+    },
     "Imidazole": {
       "smarts": "c1cnc[nH]1",
       "pubchem_cid": 795,

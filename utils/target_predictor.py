@@ -150,8 +150,8 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
 def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
 
-    Rule: Imidazole + at least one lipophilic partner (Phenyl ring, Ether,
-    or Halogen), provided the compound lacks FGs that indicate a competing
+    Rule: Imidazole OR Triazole + at least one lipophilic partner (Phenyl ring,
+    Ether, or Halogen), provided the compound lacks FGs that indicate a competing
     metal-binding context:
       • Ketone excluded: alpha-keto HDAC warhead (romidepsin-class inhibitors
         contain Imidazole + Ketone but are HDAC substrates, not CYP heme binders).
@@ -170,12 +170,14 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     ketone_hdac_context = "Ketone" in fg_set and (
         "Amide" in fg_set or "Tertiary amine" in fg_set
     )
+    azole_ring = "Imidazole" in fg_set or "Triazole" in fg_set
     if (
-        "Imidazole" in fg_set
+        azole_ring
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
         and not ketone_hdac_context
         and "Purine" not in fg_set
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
+        and "Sulfonamide" not in fg_set           # CA Zn-binding context; triazole-sulfonamide CA inhibitors exist
     ):
         return _CYPCOND_AZOLE_BONUS, "azole motif"
     return 0.0, ""
