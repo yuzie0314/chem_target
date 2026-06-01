@@ -178,22 +178,25 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
 def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus for CYP450 when aryl-halide carboxylic acid is present without NSAID context.
 
-    Rule: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
+    Two rules (additive where both fire):
 
-    Aryl halide carboxylic acids (halogenated arylpropionic/acetic acids) are CYP450
-    substrates metabolised via aromatic hydroxylation and O-dealkylation.  They are
-    systematically predicted as COX because Carboxylic acid + Phenyl accumulates
-    two COX votes (3.219) vs Halogen's single CYP450 vote (1.609).
+    Rule A: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
+      Catches minimal aryl-halide COOH scaffold (CHEMBL3125537, CHEMBL3407554).
+      Exclusions prevent NSAID conflict:
+        • INDOMETHACIN (COX HIT): has Ether → excluded ✓
+        • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
 
-    The Amide/Ether exclusions prevent conflation with NSAID scaffolds:
-      • INDOMETHACIN (COX HIT): has Ether → excluded ✓
-      • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
-    Verified: 0 current HITs match COOH+Phenyl+Halogen without Amide/Ether.
+    Rule B: Carboxylic acid + Amide + Ether + Phenyl ring + Halogen.
+      Catches extended aryl-halide COOH + linker scaffold (CHEMBL3407558, CHEMBL3407575).
+      Safety: the only benchmark HIT with this combo is CHEMBL6067690 (GPCR, score=7.784
+      from 4 GPCR FGs), which remains GPCR even with the +1.5 CYP450 bonus (4.022 < 7.784).
 
     Returns:
-        (bonus_wt, label) — pre-IDF weight and evidence label.
+        (bonus_wt, label) — pre-IDF weight and evidence label.  Returns (0.0, '') if neither
+        rule fires.
     """
     fg_set = set(fgs_detected)
+    # Rule A — minimal aryl-halide COOH
     if (
         "Carboxylic acid" in fg_set
         and "Phenyl ring" in fg_set
@@ -202,6 +205,15 @@ def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Ether" not in fg_set
     ):
         return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH CYP substrate"
+    # Rule B — extended aryl-halide COOH + Amide + Ether linker
+    if (
+        "Carboxylic acid" in fg_set
+        and "Amide" in fg_set
+        and "Ether" in fg_set
+        and "Phenyl ring" in fg_set
+        and "Halogen" in fg_set
+    ):
+        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
     return 0.0, ""
 
 
