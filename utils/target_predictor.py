@@ -71,6 +71,7 @@ _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmac
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
+_KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -265,8 +266,15 @@ def _kinase_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     Returns:
         (bonus_wt, label) — pre-IDF weight and evidence label.
     """
-    if "α,β-unsat. carbonyl" in set(fgs_detected):
+    fg_set = set(fgs_detected)
+    # Rule 1: covalent kinase warhead (Michael acceptor)
+    if "α,β-unsat. carbonyl" in fg_set:
         return _KINASE_ABUNSAT_BONUS, "covalent kinase warhead"
+    # Rule 2: Sulfonamide + Tertiary amine — kinase inhibitor with sulfonamide linker,
+    # systematically hijacked by carbonic anhydrase (Sulfonamide mw=2.0 × IDF_CA).
+    # Safety: only ONE benchmark compound has this combination (CHEMBL5594833, kinase).
+    if "Sulfonamide" in fg_set and "Tertiary amine" in fg_set:
+        return _KINASE_SULFONAMIDE_TAMINE_BONUS, "sulfonamide-amine kinase linker"
     return 0.0, ""
 
 
