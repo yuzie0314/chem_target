@@ -16,8 +16,8 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  37 functional groups
-  │  36 SMARTS patterns + Steroid(Py)   │  per molecule
+  │  FG Detection  (fg_detector.py)     │  38 functional groups
+  │  37 SMARTS patterns + Steroid(Py)   │  per molecule
   └─────────────────────────────────────┘
         │
         ▼
@@ -143,7 +143,7 @@ Outputs saved to `output/benchmark/`:
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Curated (2026-06-01)** | **220** | **67.7% (149/220)** | **71.4% (157/220)** |
+| **Curated (2026-06-04)** | **220** | **73.2% (161/220)** | **76.8% (169/220)** |
 
 Per-class (curated, 20 compounds each):
 
@@ -152,12 +152,12 @@ Per-class (curated, 20 compounds each):
 | GPCR | 100% | 100% | ✅ |
 | HDAC | 100% | 100% | ✅ |
 | Carbonic anhydrase | 100% | 100% | ✅ |
-| Tubulin | 100% | 100% | ✅ |
-| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict |
+| Tubulin | 95% | 95% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
+| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict (2) + structural (2) |
 | Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
 | COX | 75% | 85% | Indole+Sulfonamide conditional motif added |
-| Kinase | 65% | 70% | α,β-unsat. carbonyl warhead bonus added |
-| CYP450 | 35% | 40% | Structural limit: triazole antifungals undetected |
+| Kinase | 70% | 75% | α,β-unsat. carbonyl warhead + Sulfonamide+TertAmine bonuses |
+| CYP450 | 95% | 95% | Thiazole SMARTS fixes ritonavir-class ×5; 1 structural (TAZAROTENIC ACID) |
 | Adenosine receptor | 25% | 25% | Structural limit: most lack Purine scaffold |
 | mTOR | 5% | 5% | Macrolide motif fixes SIROLIMUS; 19/20 ATP-competitive |
 
@@ -284,9 +284,9 @@ Mitigation strategies (for rigorous evaluation):
 
 ---
 
-## Functional groups (37 total)
+## Functional groups (38 total)
 
-### SMARTS-based (36)
+### SMARTS-based (37)
 
 | # | Name | SMARTS | Primary targets |
 |---|---|---|---|
@@ -304,32 +304,37 @@ Mitigation strategies (for rigorous evaluation):
 | 12 | Primary amine | `[NX3H2;!$(NC=O);!$(NS=O);!$(Nc)]` | MAO, GPCR, transporter |
 | 13 | Secondary amine | `[NX3H1;!$(NC=O);!$(NS=O);!$(Nc)]` | MAO, GPCR, ion channel |
 | 14 | Tertiary amine | `[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]` | GPCR, nicotinic receptor |
-| 15 | Imidazole | `c1cnc[nH]1` | CYP450, histamine receptor, metalloprotease |
-| 16 | Triazole | `n1cncn1` | CYP450 (triazole antifungals: fluconazole, voriconazole, mw=1.5) |
-| 17 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
-| 18 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
-| 19 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
-| 20 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
-| 21 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
-| 22 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
-| 23 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase |
-| 24 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
-| 25 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
-| 26 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
-| 27 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
-| 28 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
-| 29 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
-| 30 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB |
-| 31 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
-| 32 | Methylenedioxy | `c1ccc2c(c1)OCO2` | CYP450, MAO |
-
-> **Hierarchical overlaps** (by design): Xanthine ⊂ Purine · Coumarin ⊂ Lactone · Macrolide ⊂ Lactone · Indole ∩ Phenyl ring. Each level provides independent pharmacological resolution.
+| 15 | Imidazole | `c1cnc[nH,n]1` | CYP450, histamine receptor, metalloprotease |
+| 16 | Triazole | `n1cncn1` | CYP450 (fluconazole/voriconazole-class, mw=1.5) |
+| 17 | Thiazole | `c1cncs1` | CYP450 (ritonavir-class CYP3A4 inhibitors, mw=1.5) |
+| 18 | Benzimidazole | `c1ccc2[nH,n]cnc2c1` | Scaffold marker — omeprazole/mebendazole; Imidazole substructure handles CYP votes |
+| 19 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
+| 20 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
+| 21 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
+| 22 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
+| 23 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
+| 24 | Benzamidine | `[NX3H2][CX3](=[NX2H1])c` | Serine protease S1 pocket (thrombin, trypsin, mw=3.0) |
+| 25 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
+| 26 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase (mw=2.0) |
+| 27 | Methylsulfone | `[CX4H3][SX4](=O)(=O)c` | COX-2 selectivity pocket (celecoxib class) |
+| 28 | Hydroxamate | `[CX3](=O)[NX3H][OX2H]` | HDAC Zn chelation (vorinostat class, mw=2.5) |
+| 29 | Acylsulfonamide | `[CX3](=O)[NX3H][SX4](=O)(=O)` | Tubulin (epothilone macrolide, mw=2.0) |
+| 30 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
+| 31 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
+| 32 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
+| 33 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
+| 34 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
+| 35 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
+| 36 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB; covalent kinase warhead |
+| 37 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
+ 
+> **Hierarchical overlaps** (by design): Xanthine ⊂ Purine · Coumarin ⊂ Lactone · Macrolide ⊂ Lactone · Indole ∩ Phenyl ring · Benzimidazole ⊃ Imidazole. Each level provides independent pharmacological resolution.
 
 ### Python-based (1)
 
 | # | Name | Detection | Primary targets |
 |---|---|---|---|
-| 37 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
+| 38 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
 
 > **Why Python?** RDKit's `rN` SMARTS primitive uses the Smallest Set of Smallest Rings (SSSR). In the 6-6-6-5 steroid tetracycle, C-D ring junction atoms are assigned only to the smallest ring (r5), making `[r5;r6]` always fail. `IsAtomInRingOfSize()` is not SSSR-dependent and correctly identifies junction atoms.
 
@@ -351,11 +356,11 @@ Mitigation strategies (for rigorous evaluation):
 ```
 chem_target/
 ├── constants/
-│   ├── fg_smarts.py          # FG_SMARTS dict: 36 SMARTS patterns (incl. Triazole)
+│   ├── fg_smarts.py          # FG_SMARTS dict: 37 SMARTS patterns (incl. Triazole+Thiazole+Benzimidazole)
 │   └── fg_names.py           # Legacy RDKit fr_* → human-readable (kept for compatibility)
 ├── db/                       # Auto-generated — never edit by hand
-│   ├── fg_database.json      # 36 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
-│   ├── fg_residue_table.csv  # 36 FG × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json      # 38 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
+│   ├── fg_residue_table.csv  # 37 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json # 6 002 RCSB CCD SMILES entries
 │   ├── residue_3d_poses.json # 3 222 Cα + ligand centroid + distance records
 │   ├── local_env/*.sdf       # 86 representative FG–residue complex SDFs

@@ -34,47 +34,35 @@ based on functional group analysis. Long-term: consultancy tool + SaaS.
 
 \## Architecture rules — always follow these
 
-
-
 ```
-
-chem\_target/
-
+chem_target/
 ├── constants/      # Static lookup tables only. No logic.
-
-│   ├── fg\_names.py     # FG\_NAMES: rdkit code → human readable name
-
-│   └── fg\_smarts.py    # FG\_SMARTS: name → SMARTS pattern
-
+│   ├── fg_names.py     # FG_NAMES: rdkit fr_* → human readable (legacy)
+│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (37 patterns + Steroid Python = 38 total)
 ├── db/             # Auto-generated. Never hand-edit.
-
-│   └── fg\_database.json    # Fetched from PubChem + ChEMBL
-
+│   ├── fg_database.json       # 38 FG metadata: smarts/targets/mechanistic_weight
+│   ├── fg_residue_table.csv   # 37 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
+│   ├── ccd_smiles_cache.json  # RCSB CCD SMILES cache
+│   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
-
-│   ├── io\_handler.py       # File reading (CSV, SDF, etc.)
-
-│   ├── fg\_detector.py      # Functional group detection logic
-
-│   ├── db\_updater.py       # Fetch + update fg\_database.json
-
-│   └── visualizer.py       # RDKit drawing + SVG output
-
+│   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core()
+│   ├── target_predictor.py    # IDF × mw scoring + conditional rules
+│   ├── interaction_analyzer.py  # BioLiP → fg_residue_table.csv
+│   ├── pose_extractor.py      # 3D pose extractor → residue_3d_poses.json
+│   ├── db_updater.py          # PubChem/ChEMBL → fg_database.json
+│   ├── io_handler.py          # CSV/SDF input parsing
+│   ├── report_generator.py    # HTML individual + batch reports
+│   └── visualizer.py          # RDKit SVG output
 ├── data/           # User input files
-
-├── output/         # Generated output — CSV tables, images, reports
-
+├── output/         # Generated output — CSV, SVG, HTML, reports
+├── run_benchmark.py   # 11-class × 20-compound benchmark pipeline
 └── main.py         # Entry point only. Thin. No logic here.
-
 ```
 
-
-
-\*\*Never put constants inside logic files.\*\*
-
-\*\*Never put logic inside main.py.\*\*
-
-\*\*Never hardcode values that belong in constants/ or db/.\*\*
+**Never put constants inside logic files.**
+**Never put logic inside main.py.**
+**Never hardcode values that belong in constants/ or db/.**
+**Never write to db/ manually** — use `interaction_analyzer.py`, `pose_extractor.py`, or `db_updater.py`.
 
 
 
@@ -234,16 +222,10 @@ conda environment name: `chem\_target`
 
 \## What NOT to do
 
-
-
 \- Do not use AutoDock or Glide — developer uses iGEMDOCK + SiMMap
-
 \- Do not merge constants into logic files
-
-\- Do not write to db/ manually — always via db\_updater.py
-
+\- Do not write to db/ manually — always via interaction\_analyzer.py / pose\_extractor.py / db\_updater.py
 \- Do not over-engineer early — get it working first, then clean up
-
 \- Do not ignore OpenBabel for format handling — it is already installed
 
 
@@ -257,9 +239,9 @@ conda environment name: `chem\_target`
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 38 FG SMARTS + Steroid Python = 39 total (`constants/fg_smarts.py`) | ✅ Done |
+| 37 FG SMARTS + Steroid Python = 38 total (`constants/fg_smarts.py`) | ✅ Done |
 | `db/fg_database.json` (38 entries incl. Triazole+Thiazole+Benzimidazole, mechanistic_weight) | ✅ Done |
-| `db/fg_residue_table.csv` (BioLiP rebuild with Thiazole+Benzimidazole columns) | ✅ Done |
+| `db/fg_residue_table.csv` (BioLiP rebuild, 37 SMARTS + Steroid columns) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |

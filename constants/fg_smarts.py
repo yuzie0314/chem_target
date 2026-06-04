@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 38 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 39 functional groups.
+FG_SMARTS defines 37 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 38 functional groups.
 
 Used by
 -------
