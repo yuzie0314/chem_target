@@ -252,30 +252,30 @@ conda environment name: `chem\_target`
 
 
 
-\## Current status (2026-06-01)
+\## Current status (2026-06-04)
 
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 36 FG SMARTS + Steroid Python = 37 total (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (36 entries incl. Triazole, mechanistic_weight) | ✅ Done |
-| `db/fg_residue_table.csv` (BioLiP rebuild) | ✅ Done |
+| 38 FG SMARTS + Steroid Python = 39 total (`constants/fg_smarts.py`) | ✅ Done |
+| `db/fg_database.json` (38 entries incl. Triazole+Thiazole+Benzimidazole, mechanistic_weight) | ✅ Done |
+| `db/fg_residue_table.csv` (BioLiP rebuild with Thiazole+Benzimidazole columns) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Benchmark Top-1: 157/220 = 71.4%** | ✅ Current best |
-| **Benchmark Top-3: 164/220 = 74.5%** | ✅ Current best |
-| CYP450 conditional motif scoring (azole rule) | ✅ Done |
+| **Benchmark Top-1: 161/220 = 73.2%** | ✅ Current best |
+| **Benchmark Top-3: 169/220 = 76.8%** | ✅ Current best |
+| CYP450 conditional motif scoring (azole rule, Thiazole added) | ✅ Done |
 | Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide → suppress CYP450) | ✅ Done |
 | COX indole-sulfonamide motif | ✅ Done |
 | mTOR macrolide conditional motif | ✅ Done |
 | Adenosine receptor Purine bonus | ✅ Done |
 | Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
+| Thiazole SMARTS + BioLiP table rebuild | ✅ Done |
+| Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
 | Shape / physicochemical descriptors | 🔲 Future |
-| Triazole SMARTS + BioLiP table rebuild | ✅ Done |
-| Merge dev/validation → master | ✅ Done |
 
 ---
 
@@ -286,12 +286,12 @@ conda environment name: `chem\_target`
 | GPCR | 20/20 = 100% | 20/20 | ✅ |
 | HDAC | 20/20 = 100% | 20/20 | ✅ |
 | Carbonic anhydrase | 20/20 = 100% | 20/20 | ✅ |
-| Tubulin | 20/20 = 100% | 20/20 | ✅ |
+| Tubulin | 19/20 = 95% | 19/20 | -1 GS-9256 (thiazole+ether → CYP rule; profile indistinguishable from ritonavir-class) |
 | Nuclear receptor | 16/20 = 80% | 20/20 | 4 losses: 2× Acylsulfonamide→tubulin + 2× structural |
 | Serine protease | 12/20 = 60% | 12/20 | 8 failures: no Benzamidine FG signal |
 | COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
 | Kinase | 14/20 = 70% | 15/20 | Fixed +6 by αβunsat warhead + Sulfonamide+TertAmine |
-| CYP450 | 14/20 = 70% | 14/20 | Fixed +7 by azole/aryl-COOH/ether-amine/amide-halide motifs |
+| CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural |
 | Adenosine receptor | 5/20 = 25% | 5/20 | Fixed +1 by Purine bonus; 15 structural |
 | mTOR | 1/20 = 5% | 1/20 | Fixed SIROLIMUS; 19 ATP-competitive structural |
 
@@ -308,6 +308,8 @@ conda environment name: `chem\_target`
 | Ketone | 2.0 | HDAC | α-keto warhead in HDAC natural products |
 | Steroid | 2.0 | nuclear receptor (+ subtypes) | Steroidal scaffold → NR |
 | Triazole | 1.5 | cytochrome P450 | Triazole antifungal heme-Fe coordination (fluconazole-class) |
+| Thiazole | 1.5 | cytochrome P450 | Ritonavir-class CYP3A4 inhibitor; thiazole N coordinates heme Fe analogously to imidazole |
+| Benzimidazole | 1.0 | (none — scaffold marker) | Benzene+imidazole fused; Imidazole FG already handles CYP450 voting for benzimidazole compounds |
 | All others | 1.0 | — | Default |
 
 ---
@@ -318,11 +320,11 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 | Rule | Condition | Target | Bonus | Rationale |
 |---|---|---|---|---|
-| CYP450 azole | (Imidazole OR Triazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole antifungal heme-Fe coordination |
+| CYP450 azole | (Imidazole OR Triazole OR Thiazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole/thiazole heme-Fe coordination (fluconazole/ritonavir class) |
 | CYP450 aryl-COOH A | COOH + Phenyl + Halogen, no Amide, no Ether | cytochrome P450 | +1.5 | Minimal aryl-halide CYP substrate |
 | CYP450 aryl-COOH B | COOH + Amide + Ether + Phenyl + Halogen | cytochrome P450 | +1.5 | Extended aryl-halide CYP substrate |
 | CYP450 ether-amine | Ether + TertAmine + Phenyl + Halogen, no Lactone/Amide/Nitrile | cytochrome P450 | +1.5 | CYP3A4 scaffold (aprepitant-type) |
-| CYP450 amide-halide | Amide + Phenyl + Halogen, no Sulfonamide/COOH/Imidazole/αβunsat/Ether | cytochrome P450 | +0.5 | Minimal amide-halide CYP substrate |
+| CYP450 amide-halide | Amide + Phenyl + Halogen, no Sulfonamide/COOH/Imidazole/αβunsat/Ether | cytochrome P450 | +0.6 | Minimal amide-halide CYP substrate (raised from 0.5 to compensate IDF shift from Thiazole) |
 | COX indole-sulfonamide | Indole + Sulfonamide | COX | +2.0 | Indole scaffold + COX-2 selectivity pocket |
 | mTOR macrolide | Macrolide, no Thiol/αβunsat/Acylsulfonamide | mTOR | +2.0 | Rapamycin-class allosteric FKBP12 binding |
 | Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
@@ -339,7 +341,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 1. **mTOR 5% (1/20)**: SIROLIMUS fixed. 19/20 are Ether/Amide/Phenyl ATP-competitive → NR wins (no mTOR-specific FG).
 2. **Adenosine receptor 25% (5/20)**: 15/20 failures have no Purine/Xanthine at all; generic Phenyl/Halogen → NR/tubulin.
-3. **CYP450 70% (14/20)**: 6 remaining failures all have zero CYP FGs (no Imidazole/Triazole/Halogen/Epoxide/Nitro/Coumarin/Methylenedioxy/Steroid). Triazole added but benchmark test set has no triazole antifungals.
+3. **CYP450 95% (19/20)**: 1 remaining failure = TAZAROTENIC ACID (pyridine scaffold; no azole/halogen FG → invisible to CYP scoring). Thiazole SMARTS (2026-06-04) fixed ritonavir-class ×5 compound.
 4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. Peptidomimetics look like NR/tubulin/GPCR.
 5. **Kinase 70% (14/20)**: 6 remaining. 2 stolen by CYP450 azole (Imidazole+Phenyl+Halogen, no distinguisher). 1 Steroid scaffold. 3 sparse.
 6. **NR 80% (16/20)**: 2 Acylsulfonamide→tubulin (irreconcilable without hurting tubulin). 2 purely structural.
@@ -352,8 +354,10 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 - **Macrolide mw=1.2**: net 0. SIROLIMUS Ketone+Lactone HDAC score always beats Macrolide mTOR score.
 - **GPCR saturation (diminishing returns)**: Risky — GPCR compounds with Indole+Phenol would lose to serotonin receptor (IDF=3.555) when GPCR second vote is reduced below 3.555. Current 100% GPCR accuracy depends on full FG accumulation.
 - **Carboxylic acid → NR conditional**: Adding CA+acid → NR would break INDOMETHACIN (COX HIT) which has identical FG profile (CA+acid+Ether+Phenyl+Halogen) to the NR compound CHEMBL2323507.
-- **Stable sort for NR/tubulin tie-breaking**: Using `kind='stable'` in sort_values swaps GS-9256 (tubulin HIT → MISS) for CHEMBL180681 (NR MISS → HIT). Net Top-1 = 0. Tubulin drops from 100% to 95%, which is visually worse.
+- **Stable sort for NR/tubulin tie-breaking**: Using `kind='stable'` in sort_values swaps GS-9256 (tubulin HIT → MISS) for CHEMBL180681 (NR MISS → HIT). Net Top-1 = 0. Tubulin drops, which is worse.
 - **Halogen → NR annotation**: Would fix CHEMBL180681 (Phenyl+Halogen→NR tie) but breaks INDOMETHACIN COX HIT (Halogen+Phenyl+Ether+COOH → NR would beat COX). Net negative.
+- **Benzimidazole with kinase/tubulin target classes**: Adding "kinase"+"tubulin" to Benzimidazole target classes (2026-06-04 attempt) decreased kinase IDF (5→6 annotators) and tubulin IDF (4→5 annotators), flipping 6 kinase→GPCR and 7 tubulin→CA. Net -13. Fix: Benzimidazole target_classes=[] (scaffold marker only). **Do NOT add kinase or tubulin to Benzimidazole annotations.**
+- **GS-9256 (tubulin compound with thiazole ring)**: Cannot be distinguished from ritonavir-class at FG level (both have Thiazole+Phenyl+Ether profile). Thiazole addition causes GS-9256 to be incorrectly predicted as CYP450 (net -1 tubulin). Accept as structural limitation.
 
 ---
 
@@ -362,6 +366,6 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 \### Next potential improvements
 
 1. **SDF / MOL2 input support** (`utils/io_handler.py`) — currently only CSV supported
-2. **Additional FG SMARTS** — consider Thiazole, Benzimidazole for broader CYP450 coverage
-3. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
+2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
+3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
 

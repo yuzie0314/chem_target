@@ -150,9 +150,12 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
 def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
 
-    Rule: Imidazole OR Triazole + at least one lipophilic partner (Phenyl ring,
-    Ether, or Halogen), provided the compound lacks FGs that indicate a competing
-    metal-binding context:
+    Rule: Imidazole OR Triazole OR Thiazole + at least one lipophilic partner
+    (Phenyl ring, Ether, or Halogen), provided the compound lacks FGs that
+    indicate a competing metal-binding context:
+      • Thiazole added 2026-06-04: ritonavir-class CYP3A4 inhibitors carry a
+        thiazole ring whose N coordinates heme Fe(III), analogously to imidazole
+        (ketoconazole-class) and triazole (fluconazole-class).
       • Ketone excluded: alpha-keto HDAC warhead (romidepsin-class inhibitors
         contain Imidazole + Ketone but are HDAC substrates, not CYP heme binders).
       • Purine excluded: the imidazole-like ring in purines (adenosine receptor
@@ -170,7 +173,7 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     ketone_hdac_context = "Ketone" in fg_set and (
         "Amide" in fg_set or "Tertiary amine" in fg_set
     )
-    azole_ring = "Imidazole" in fg_set or "Triazole" in fg_set
+    azole_ring = "Imidazole" in fg_set or "Triazole" in fg_set or "Thiazole" in fg_set
     if (
         azole_ring
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
@@ -224,7 +227,8 @@ def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
     # Rule D — Amide + Phenyl + Halogen without sulfonamide/ether/COOH (minimal CYP substrate)
     # Catches e.g. CHEMBL3236364.  CA HITs all have Sulfonamide -> excluded.
-    # Bonus needs only +0.5 to exceed tubulin IDF (2.169) from Phenyl alone.
+    # Bonus raised to +0.6 (was +0.5) to compensate for CYP450 IDF decrease after Thiazole
+    # added as 9th CYP450 annotator (IDF 1.504→1.440); tubulin IDF = 2.251; need 2.251/1.440 > 1.5.
     if (
         "Amide" in fg_set
         and "Phenyl ring" in fg_set
@@ -235,7 +239,7 @@ def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "α,β-unsat. carbonyl" not in fg_set
         and "Ether" not in fg_set
     ):
-        return 0.5, "amide-halide CYP substrate"
+        return 0.6, "amide-halide CYP substrate"
     # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
     # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
     # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).

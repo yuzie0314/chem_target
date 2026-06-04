@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 36 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 37 functional groups.
+FG_SMARTS defines 38 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 39 functional groups.
 
 Used by
 -------
@@ -104,6 +104,25 @@ FG_SMARTS: dict[str, str] = {
     #   and was validated on fluconazole, voriconazole (MATCH) and clotrimazole,
     #   metronidazole, omeprazole, purine compounds (NO MATCH).
     "Triazole":                 "n1cncn1",
+    # Thiazole: 5-membered aromatic ring with S (position 1) and N (position 3).
+    #   1,3-Thiazole isomer; SMARTS covers BOTH free thiazole (N-unsubstituted)
+    #   AND N-substituted variants.  Key scaffold in ritonavir-class CYP3A4
+    #   inhibitors (HIV protease inhibitors used as pharmacokinetic boosters) where
+    #   the thiazole N coordinates heme Fe(III) analogously to imidazole/triazole.
+    #   Also present in meloxicam (COX substrate), sulfathiazole (antibacterial),
+    #   and various kinase inhibitors.  Substructure of benzothiazole (also matched).
+    #   Validated on ritonavir SMILES (2 matches for the 2 thiazole rings) and
+    #   confirmed NO match for imidazole, triazole, thiophene, or oxazole.
+    "Thiazole":                 "c1cncs1",
+    # Benzimidazole: benzo[d]imidazole — benzene fused to imidazole.
+    #   Covers both 1H-benzimidazole and N-substituted variants via [nH,n].
+    #   Key scaffold in proton pump inhibitors (omeprazole, lansoprazole),
+    #   anthelmintic tubulin binders (mebendazole, albendazole), and some
+    #   kinase inhibitors.  Contains an imidazole substructure (also detected
+    #   separately by the Imidazole pattern) — hierarchical overlap is intentional.
+    #   Validated: matches omeprazole, mebendazole, N-methyl-benzimidazole;
+    #   does NOT match purine, indole, benzoxazole, or thiazole.
+    "Benzimidazole":            "c1ccc2[nH,n]cnc2c1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
