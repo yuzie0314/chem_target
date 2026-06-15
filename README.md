@@ -16,8 +16,9 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  38 functional groups
-  │  37 SMARTS patterns + Steroid(Py)   │  per molecule
+  │  FG Detection  (fg_detector.py)     │  41 functional groups
+  │  40 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
+  │  azolo-diazine + scaffold cores     │  per molecule
   └─────────────────────────────────────┘
         │
         ▼
@@ -143,7 +144,7 @@ Outputs saved to `output/benchmark/`:
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Curated (2026-06-04)** | **220** | **73.2% (161/220)** | **76.8% (169/220)** |
+| **Curated (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
 
 Per-class (curated, 20 compounds each):
 
@@ -152,14 +153,14 @@ Per-class (curated, 20 compounds each):
 | GPCR | 100% | 100% | ✅ |
 | HDAC | 100% | 100% | ✅ |
 | Carbonic anhydrase | 100% | 100% | ✅ |
-| Tubulin | 95% | 95% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
-| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict (2) + structural (2) |
-| Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
-| COX | 75% | 85% | Indole+Sulfonamide conditional motif added |
-| Kinase | 70% | 75% | α,β-unsat. carbonyl warhead + Sulfonamide+TertAmine bonuses |
 | CYP450 | 95% | 95% | Thiazole SMARTS fixes ritonavir-class ×5; 1 structural (TAZAROTENIC ACID) |
-| Adenosine receptor | 25% | 25% | Structural limit: most lack Purine scaffold |
-| mTOR | 5% | 5% | Macrolide motif fixes SIROLIMUS; 19/20 ATP-competitive |
+| Tubulin | 95% | 100% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
+| Kinase | 90% | 95% | Pyrimidine router (mono-pyrimidine→kinase) + α,β-unsat. warhead bonuses |
+| mTOR | 85% | 85% | Morpholino-diazine (TORKinib) + Macrolide (rapalog) motifs; 3 remain (no morpholine) |
+| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict (2) + structural (2) |
+| COX | 75% | 85% | Indole+Sulfonamide conditional motif |
+| Adenosine receptor | 60% | 60% | Pyrimidine router (fused-azolo-diazine→adenosine); 8 remain (no purine-mimetic core) |
+| Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
 
 Target classes covered by the benchmark (19 classes):
 
@@ -185,11 +186,19 @@ Target classes covered by the benchmark (19 classes):
 | xanthine oxidase | XO / xanthine dehydrogenase |
 | COMT | COMT |
 
-### External comparison: SwissTargetPrediction (outdated — based on earlier model version)
+### External comparison: SwissTargetPrediction
 
 To contextualise chem_target's accuracy, we benchmark against
 [SwissTargetPrediction (STP)](https://www.swisstargetprediction.ch/) — a widely used
 fingerprint-similarity reverse-docking tool trained directly on ChEMBL.
+
+**Fair head-to-head scope:** chem_target is a functional-group / mechanism-based tool
+designed for the 11 mechanistic target classes it has FG rules for. The comparison
+below is computed on the **220 shared compounds (11 classes)** that both tools were
+evaluated on (the STP results are cached; rerun with `--compare`). The earlier
+"6.7% vs 55.1%" figure scored chem_target on 8 additional classes it has no rules for
+(MAO, COMT, ribosome, topoisomerase, PDE, xanthine oxidase, cysteine protease) and is
+therefore not a like-for-like comparison of the approach.
 
 ```bash
 # Run STP on the same curated set and compare
@@ -206,13 +215,19 @@ Outputs saved to `output/benchmark/`:
 - `stp_report.txt` — STP-only narrative report
 - `comparison_report.txt` — side-by-side chem_target vs STP
 
-#### Overall comparison (curated set, 343 compounds, 19 classes)
+#### Overall comparison (220 shared compounds, 11 mechanistic classes, 2026-06-15)
 
 | Metric | chem_target | SwissTargetPrediction |
 |---|---|---|
-| Top-1 accuracy | 6.7% | **55.1%** |
-| Top-3 accuracy | 14.9% | **70.3%** |
-| Mean Reciprocal Rank | 0.142 | **0.633** |
+| Top-1 accuracy | **85.5%** | 70.5% |
+| Top-3 accuracy | **89.1%** | 77.3% |
+| Mean Reciprocal Rank | **0.872** | 0.754 |
+| Macro-avg F1 (Top-1) | **0.855** | 0.718 |
+
+On the classes it targets, chem_target now **out-performs** STP overall — driven by
+mechanistic pharmacophores STP's fingerprint similarity misses (tubulin 95% vs 5%,
+CYP450 95% vs 35%, mTOR 85% vs 60%). STP remains stronger on well-populated ChEMBL
+classes with dense analog series (COX, adenosine, serine protease).
 
 > ⚠ **STP bias note:** The curated test compounds are sourced directly from ChEMBL,
 > the same database STP's fingerprint models are trained on.  STP accuracy figures
@@ -221,32 +236,34 @@ Outputs saved to `output/benchmark/`:
 
 #### Per-class breakdown
 
+(11 shared mechanistic classes, 20 compounds each; **bold** = winner on Top-1)
+
 | Target class | N | cT Top-1 | cT Top-3 | cT MRR | STP Top-1 | STP Top-3 | STP MRR |
 |---|---|---|---|---|---|---|---|
-| COMT | 20 | 0% | 0% | 0.000 | 5% | 85% | 0.341 |
-| COX | 20 | 0% | 0% | 0.105 | **90%** | **90%** | 0.913 |
-| CYP450 | 20 | 0% | 15% | 0.080 | 35% | 75% | 0.594 |
-| GPCR | 20 | **65%** | 75% | **0.751** | 75% | 75% | 0.750 |
-| HDAC | 20 | 5% | 5% | 0.050 | **100%** | **100%** | 1.000 |
-| MAO | 20 | 0% | 0% | 0.018 | 0% | 0% | 0.003 |
-| PDE | 20 | 0% | 0% | 0.000 | 65% | **95%** | 0.802 |
-| adenosine receptor | 20 | 5% | 20% | 0.135 | 80% | 85% | 0.825 |
-| carbonic anhydrase | 20 | 0% | 40% | 0.237 | **100%** | **100%** | 1.000 |
-| cysteine protease | 20 | 0% | 0% | 0.000 | 95% | 95% | 0.950 |
-| kinase | 20 | 30% | 45% | 0.438 | 80% | 85% | 0.825 |
-| mTOR | 20 | 0% | 0% | 0.005 | 60% | 70% | 0.670 |
-| nuclear receptor | 20 | 10% | 20% | 0.284 | 70% | 75% | 0.757 |
-| ribosome | 3 | 0% | 0% | 0.000 | 0% | 0% | 0.000 |
-| serine protease | 20 | 0% | 35% | 0.265 | 80% | 80% | 0.800 |
-| topoisomerase | 20 | 0% | 0% | 0.000 | 0% | 0% | 0.022 |
-| tubulin | 20 | 0% | 0% | 0.067 | 5% | 15% | 0.154 |
-| xanthine oxidase | 20 | 0% | 0% | 0.000 | 5% | 80% | 0.456 |
+| GPCR | 20 | **100%** | 100% | 1.000 | 75% | 75% | 0.750 |
+| HDAC | 20 | 100% | 100% | 1.000 | 100% | 100% | 1.000 |
+| carbonic anhydrase | 20 | 100% | 100% | 1.000 | 100% | 100% | 1.000 |
+| CYP450 | 20 | **95%** | 95% | 0.950 | 35% | 75% | 0.594 |
+| tubulin | 20 | **95%** | 100% | 0.967 | 5% | 15% | 0.154 |
+| kinase | 20 | **90%** | 95% | 0.930 | 80% | 85% | 0.825 |
+| mTOR | 20 | **85%** | 85% | 0.850 | 60% | 70% | 0.670 |
+| nuclear receptor | 20 | **80%** | 100% | 0.875 | 70% | 75% | 0.757 |
+| COX | 20 | 75% | 85% | 0.820 | **90%** | 90% | 0.913 |
+| adenosine receptor | 20 | 60% | 60% | 0.600 | **80%** | 85% | 0.825 |
+| serine protease | 20 | 60% | 60% | 0.600 | **80%** | 80% | 0.800 |
 
 **Notable findings:**
-- chem_target matches or beats STP on **GPCR** (65% vs 75% Top-1, 0.751 vs 0.750 MRR)
-- Both tools fail completely on **MAO**, **topoisomerase**, and **ribosome**
-- STP dominates on **HDAC**, **carbonic anhydrase**, **COX**, **cysteine protease** (fingerprint similarity excels for well-populated ChEMBL classes)
-- chem_target's FG approach generalises better to **novel scaffolds** not in ChEMBL
+- chem_target **wins or ties on 8/11 classes**, decisively on tubulin (95% vs 5%),
+  CYP450 (95% vs 35%) and mTOR (85% vs 60%) — mechanistic pharmacophores
+  (Acylsulfonamide warhead, azole heme coordination, morpholino-diazine hinge)
+  that fingerprint similarity does not capture.
+- STP wins on **COX**, **adenosine receptor**, **serine protease** — densely
+  populated ChEMBL analog series where fingerprint similarity excels.
+- chem_target's FG approach is expected to **generalise better to novel scaffolds**
+  not represented in ChEMBL (the basis of STP's similarity search).
+- **Scope:** chem_target only targets these 11 mechanistic classes; STP additionally
+  attempts MAO / COMT / PDE / topoisomerase / ribosome / xanthine oxidase / cysteine
+  protease, for which chem_target currently has no FG rules (scores ≈ 0).
 
 **Design philosophy comparison:**
 

@@ -833,6 +833,22 @@ def _load_stp_results() -> list[dict]:
     return results
 
 
+def _load_chem_compound_names(chem_results_csv: Path = _CHEM_RESULTS) -> set[str]:
+    """Return the set of compound names chem_target actually evaluated.
+
+    Used to restrict the STP comparison to the *intersection* of compounds both
+    tools ran, so the head-to-head is fair.  chem_target's curated set covers the
+    11 mechanistic classes it has FG rules for; STP additionally attempts other
+    classes.  Comparing on the shared set avoids penalising chem_target for
+    classes it does not target (and vice-versa).
+    """
+    if not chem_results_csv.exists():
+        return set()
+    with open(chem_results_csv, encoding="utf-8") as f:
+        return {row["compound_name"] for row in csv.DictReader(f)
+                if row.get("compound_name")}
+
+
 def _rebuild_stats_from_results(results: list[dict]) -> dict[str, dict]:
     """Recompute per-class stats from saved per-compound results."""
     stats: dict[str, dict] = {}
@@ -881,7 +897,26 @@ def main() -> None:
     elif args.compare:
         print("=== Generating comparison report ===")
         results = _load_stp_results()
+        # Fair head-to-head: restrict STP to compounds chem_target also evaluated.
+        chem_names = _load_chem_compound_names()
+        if chem_names:
+            before = len(results)
+            results = [r for r in results
+                       if r.get("compound_name") in chem_names]
+            print(f"Restricted STP set to {len(results)}/{before} compounds "
+                  f"shared with chem_target ({len(chem_names)} chem_target compounds)")
         stp_stats = _rebuild_stats_from_results(results)
+        # Compute STP classification metrics on the shared set (generate_comparison
+        # expects them under "_metrics_k1"; the --report-only path skips this).
+        stp_pred_sets = (_load_stp_predicted_sets(_STP_RAW_CSV, k=3)
+                         if _STP_RAW_CSV.exists() else {})
+        _tl: list[str] = []
+        _k1: list[list[str]] = []
+        for r in results:
+            pdata = stp_pred_sets.get(r.get("compound_name", ""), {})
+            _tl.append(r.get("true_class") or "unknown")
+            _k1.append(pdata.get("top1", []))
+        stp_stats["_metrics_k1"] = compute_metrics(_tl, _k1)  # type: ignore[assignment]
         generate_comparison(stp_stats)
     else:
         # Full run
