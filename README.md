@@ -231,7 +231,7 @@ Outputs saved to `output/benchmark/`:
 | Top-1 accuracy | **85.5%** | 70.5% |
 | Top-3 accuracy | **89.1%** | 77.3% |
 | Mean Reciprocal Rank | **0.872** | 0.754 |
-| Macro-avg F1 (Top-1) | **0.855** | 0.718 |
+| Macro-avg F1 (Top-1) | **0.855** | 0.726 |
 
 On the classes it targets, chem_target now **out-performs** STP overall — driven by
 mechanistic pharmacophores STP's fingerprint similarity misses (tubulin 95% vs 5%,

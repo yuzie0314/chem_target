@@ -294,9 +294,14 @@ marketed drugs carry — not a rule gap. Adding the warhead rule cannot capture 
 carry the warhead. The other 5 blind-spot classes (PDE/topoisomerase/ribosome/XO/cysteine protease)
 remain un-added; see Next tasks.
 
-⚠ **Data bug found:** `run_stp_comparison.py` `_TARGET_CLASS_MAP` uses *different, wrong* ChEMBL IDs
-for the 7 blind-spot classes than `run_benchmark.py` (e.g. DARUNAVIR mislabelled MAO, JDTIC/CYCLORPHAN
-as topoisomerase). The two maps should be unified to a single source of truth before extending further.
+✅ **Data bug FIXED (2026-06-15):** `run_stp_comparison.py` previously had a local `_TARGET_CLASS_MAP`
+with *wrong* ChEMBL IDs for the 7 blind-spot classes (e.g. MAO→CHEMBL2828 returned DARUNAVIR,
+topoisomerase→CHEMBL3952 returned the opioid JDTIC). It now `from run_benchmark import TARGET_CLASS_MAP`
+— **single source of truth**, so the two can never diverge again. `generate_comparison` also restricts
+to the true compound intersection (`restrict_names`), keeping the head-to-head fair after benchmark
+expansion. NOTE: the cached `stp_raw.csv` still holds the old mislabelled STP rows for those 7 classes
+(fetched with the bad map); re-query STP to refresh them — but the published 220/11-class fair
+comparison never used them, so it is unaffected.
 
 ---
 
@@ -395,9 +400,9 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 
 **Tier 2 (next, if pursued):** topoisomerase (Anthraquinone + quinolone-3-COOH SMARTS),
 xanthine oxidase (Pyrazolopyrimidine already detected + Thiazole-COOH), cysteine protease
-(Nitrile warhead — but collides with kinase, must gate). **Prerequisite: unify the divergent
-ChEMBL target maps** between run_benchmark.py and run_stp_comparison.py (single source of truth)
-and re-download with correct IDs; verify compounds are the right drug class before adding rules.
+(Nitrile warhead — but collides with kinase, must gate). The ChEMBL target maps are now unified
+(done 2026-06-15); still verify each class's downloaded compounds are the right drug class (pChEMBL
+bias often returns research analogs without the textbook pharmacophore) before adding rules.
 
 **Tier 3 (deprioritised):** PDE (too generic + collisions), ribosome (only 3 compounds + hard
 aminoglycosides). Likely structural limits like adenosine/serine protease.
