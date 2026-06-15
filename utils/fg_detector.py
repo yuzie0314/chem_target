@@ -140,10 +140,56 @@ def _detect_steroid_core(mol: Chem.Mol) -> bool:
     return False
 
 
+def _detect_fused_azolo_diazine(mol: Chem.Mol) -> bool:
+    """Detect a fused 5-6 N-bicyclic aromatic core (azole fused to a diazine).
+
+    Returns True when the molecule contains an aromatic 5-membered ring with
+    >= 2 ring nitrogens fused (sharing exactly one bond / two atoms) to an
+    aromatic 6-membered ring with >= 2 ring nitrogens.
+
+    This recognises the purine / triazolopyrimidine / pyrazolopyrimidine /
+    imidazopyrimidine family — the flat purine-mimetic scaffold that defines
+    adenosine-receptor ligands (and is shared by xanthines and many fused
+    ATP-pocket binders).  Implemented in Python rather than SMARTS because
+    fused-ring N-count predicates across two rings are awkward and brittle to
+    express with the ``rN`` SSSR primitive (cf. ``_detect_steroid_core``).
+
+    This is a *routing-only* marker: it is intentionally NOT registered in
+    fg_database.json, so it casts no IDF-weighted votes and does not shift the
+    IDF denominator.  It is consumed solely by the pyrimidine router in
+    utils/target_predictor.py.
+
+    Args:
+        mol: RDKit molecule object (caller must ensure mol is not None).
+
+    Returns:
+        True if at least one fused 5(>=2N)-6(>=2N) aromatic ring pair exists.
+    """
+    ri = mol.GetRingInfo()
+    arom_rings = [
+        set(r) for r in ri.AtomRings()
+        if all(mol.GetAtomWithIdx(i).GetIsAromatic() for i in r)
+    ]
+
+    def n_count(ring: set[int]) -> int:
+        return sum(1 for i in ring if mol.GetAtomWithIdx(i).GetAtomicNum() == 7)
+
+    for a in arom_rings:
+        for b in arom_rings:
+            if a is b:
+                continue
+            if len(a & b) != 2:          # fused = share exactly one bond
+                continue
+            if len(a) == 5 and len(b) == 6 and n_count(a) >= 2 and n_count(b) >= 2:
+                return True
+    return False
+
+
 # ── Python-based FG detectors (for FGs that cannot use SMARTS) ───────────────
 
 _PYTHON_DETECTORS: dict[str, Callable[[Chem.Mol], bool]] = {
     "Steroid": _detect_steroid_core,
+    "Fused azolo-diazine": _detect_fused_azolo_diazine,
 }
 
 

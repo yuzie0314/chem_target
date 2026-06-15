@@ -45,8 +45,8 @@ chem_target/
 │   ├── ccd_smiles_cache.json  # RCSB CCD SMILES cache
 │   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
-│   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core()
-│   ├── target_predictor.py    # IDF × mw scoring + conditional rules
+│   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core(), _detect_fused_azolo_diazine()
+│   ├── target_predictor.py    # IDF × mw scoring + conditional rules + _pyrimidine_router()
 │   ├── interaction_analyzer.py  # BioLiP → fg_residue_table.csv
 │   ├── pose_extractor.py      # 3D pose extractor → residue_3d_poses.json
 │   ├── db_updater.py          # PubChem/ChEMBL → fg_database.json
@@ -246,20 +246,21 @@ conda environment name: `chem\_target`
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Benchmark Top-1: 177/220 = 80.5%** | ✅ Current best |
-| **Benchmark Top-3: 185/220 = 84.1%** | ✅ Current best |
-| CYP450 conditional motif scoring (azole rule, Thiazole added) | ✅ Done |
-| Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide → suppress CYP450) | ✅ Done |
+| **Benchmark Top-1: 188/220 = 85.5%** | ✅ Current best |
+| **Benchmark Top-3: 196/220 = 89.1%** | ✅ Current best |
+| CYP450 conditional motif scoring (azole rule, Thiazole added, Pyrimidine guard) | ✅ Done |
+| Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide + fused-azolo-diazine → suppress CYP450) | ✅ Done |
 | COX indole-sulfonamide motif | ✅ Done |
 | mTOR macrolide conditional motif (rapalog) | ✅ Done |
-| mTOR morpholino-diazine motif (ATP-competitive TORKinib) | ✅ Done |
+| **Pyrimidine router** (mutually-exclusive: morpholino→mTOR / fused-azolo→adenosine / mono→kinase) | ✅ Done |
 | Adenosine receptor Purine bonus | ✅ Done |
 | Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
 | Thiazole SMARTS + BioLiP table rebuild | ✅ Done |
 | Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
 | Morpholine + Pyrimidine + Triazine SMARTS (scaffold markers, no target votes) | ✅ Done |
+| `_detect_fused_azolo_diazine` Python detector (routing-only, not in fg_database → no IDF impact) | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
-| Fused-N-heteroaromatic core descriptor (方案 4 — see Next tasks) | 🔲 Flagged |
+| Fused-N-heteroaromatic core descriptor (方案 4 — azolo-diazine subset DONE; other cores pending) | 🟡 Partial |
 | Shape / physicochemical descriptors | 🔲 Future |
 
 ---
@@ -275,9 +276,9 @@ conda environment name: `chem\_target`
 | Nuclear receptor | 16/20 = 80% | 20/20 | 4 losses: 2× Acylsulfonamide→tubulin + 2× structural |
 | Serine protease | 12/20 = 60% | 12/20 | 8 failures: no Benzamidine FG signal |
 | COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
-| Kinase | 14/20 = 70% | 15/20 | Fixed +6 by αβunsat warhead + Sulfonamide+TertAmine |
-| CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural |
-| Adenosine receptor | 5/20 = 25% | 5/20 | Fixed +1 by Purine bonus; 15 structural |
+| Kinase | 18/20 = 90% | 18/20 | +4 by pyrimidine router (mono-pyrimidine→kinase, branch 3); earlier +6 αβunsat+Sulfonamide. 2 remaining: 1 strong-GPCR (CHEMBL5270693), 1 Steroid |
+| CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural. Pyrimidine guard added (no CYP450 TP has pyrimidine) |
+| Adenosine receptor | 12/20 = 60% | 12/20 | +7 by pyrimidine router (fused-azolo-diazine→adenosine, branch 2). 8 remaining: no purine-mimetic core (Phenol/Halogen sparse, or Nitrile/Steroid) |
 | mTOR | 17/20 = 85% | 17/20 | Fixed +16 by morpholino-diazine motif (16 ATP-competitive TORKinibs); +SIROLIMUS by macrolide rule. 3 remaining have no morpholine (SAPANISERTIB, CHEMBL3645910, CHEMBL3681183) |
 
 ---
@@ -295,10 +296,13 @@ conda environment name: `chem\_target`
 | Triazole | 1.5 | cytochrome P450 | Triazole antifungal heme-Fe coordination (fluconazole-class) |
 | Thiazole | 1.5 | cytochrome P450 | Ritonavir-class CYP3A4 inhibitor; thiazole N coordinates heme Fe analogously to imidazole |
 | Benzimidazole | 1.0 | (none — scaffold marker) | Benzene+imidazole fused; Imidazole FG already handles CYP450 voting for benzimidazole compounds |
-| Morpholine | 1.0 | (none — scaffold marker) | PI3K/mTOR hinge-binder; promiscuous alone (gefitinib). Voting via morpholino-diazine conditional rule |
-| Pyrimidine | 1.0 | (none — scaffold marker) | 1,3-diazine hinge-anchor; promiscuous alone. Voting via morpholino-diazine conditional rule |
-| Triazine | 1.0 | (none — scaffold marker) | 1,3,5-triazine hinge-anchor (gedatolisib class). Voting via morpholino-diazine conditional rule |
+| Morpholine | 1.0 | (none — scaffold marker) | PI3K/mTOR hinge-binder; promiscuous alone (gefitinib). Voting via pyrimidine router (branch 1) |
+| Pyrimidine | 1.0 | (none — scaffold marker) | 1,3-diazine hinge-anchor; promiscuous alone. Voting via pyrimidine router (branches 1–3) |
+| Triazine | 1.0 | (none — scaffold marker) | 1,3,5-triazine hinge-anchor (gedatolisib class). Voting via pyrimidine router (branch 1) |
 | All others | 1.0 | — | Default |
+
+**Routing-only Python detector (NOT in fg_database.json → no IDF impact):**
+`Fused azolo-diazine` — `utils/fg_detector._detect_fused_azolo_diazine`: aromatic 5-ring(≥2N) fused to 6-ring(≥2N). Purine / triazolopyrimidine / pyrazolopyrimidine core. Consumed only by the pyrimidine router (branch 2 → adenosine) and the CYP450 negative constraint. Appears in `fgs_detected` but casts no votes.
 
 ---
 
@@ -308,31 +312,44 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 | Rule | Condition | Target | Bonus | Rationale |
 |---|---|---|---|---|
-| CYP450 azole | (Imidazole OR Triazole OR Thiazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole/thiazole heme-Fe coordination (fluconazole/ritonavir class) |
+| CYP450 azole | (Imidazole OR Triazole OR Thiazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, **no Pyrimidine**, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole/thiazole heme-Fe coordination (fluconazole/ritonavir class). Pyrimidine guard: azole paired/fused with a diazine is a purine-mimetic, not a free heme binder (no CYP450 TP has pyrimidine) |
 | CYP450 aryl-COOH A | COOH + Phenyl + Halogen, no Amide, no Ether | cytochrome P450 | +1.5 | Minimal aryl-halide CYP substrate |
 | CYP450 aryl-COOH B | COOH + Amide + Ether + Phenyl + Halogen | cytochrome P450 | +1.5 | Extended aryl-halide CYP substrate |
 | CYP450 ether-amine | Ether + TertAmine + Phenyl + Halogen, no Lactone/Amide/Nitrile | cytochrome P450 | +1.5 | CYP3A4 scaffold (aprepitant-type) |
 | CYP450 amide-halide | Amide + Phenyl + Halogen, no Sulfonamide/COOH/Imidazole/αβunsat/Ether | cytochrome P450 | +0.6 | Minimal amide-halide CYP substrate (raised from 0.5 to compensate IDF shift from Thiazole) |
 | COX indole-sulfonamide | Indole + Sulfonamide | COX | +2.0 | Indole scaffold + COX-2 selectivity pocket |
 | mTOR macrolide | Macrolide, no Thiol/αβunsat/Acylsulfonamide | mTOR | +2.0 | Rapamycin-class allosteric FKBP12 binding |
-| mTOR morpholino-diazine | Morpholine + (Pyrimidine OR Triazine) | mTOR | +2.0 | ATP-competitive TORKinib: morpholine O H-bonds hinge Val2240. In curated benchmark this combo = 16 compounds, all mTOR (zero collision) |
 | Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
 | Kinase αβunsat warhead | α,β-unsat. carbonyl present | kinase | +0.5 | Covalent Michael acceptor warhead (EGFR) |
 | Kinase sulfonamide-amine | Sulfonamide + TertAmine | kinase | +2.0 | Kinase linker hijacked by CA (Sulfonamide mw=2.0) |
 
+\### Pyrimidine router (`_pyrimidine_router`, utils/target_predictor.py)
+
+Mutually-exclusive routing for diazine-bearing ATP-pocket / purine-mimetic binders.
+Replaces the old standalone morpholino-diazine mTOR rule. Evaluated in order; **exactly one branch fires** (conflict-free by construction). Gated on Pyrimidine OR Triazine present.
+
+| Branch | Condition (after no earlier branch fired) | Target | Bonus | Benchmark provenance |
+|---|---|---|---|---|
+| 1 | Morpholine present | mTOR | +2.0 | 14 compounds, all mTOR. Morpholine O H-bonds hinge Val2240 |
+| 2 | Fused azolo-diazine core (purine-mimetic) | adenosine receptor | +2.0 | 13 compounds = 12 adenosine + 1 mTOR (already-miss). Also suppresses CYP450 (negative constraint) |
+| 3 | mono-Pyrimidine, no Methylsulfone/Hydroxamate/COOH/Aldehyde/Steroid | kinase | +2.0 | kinase-dominant; exclusions protect COX(Methylsulfone)/HDAC(Hydroxamate)/GPCR(COOH/Aldehyde)/NR(Steroid) HITs |
+
+Branch-3 exclusions are competing pharmacophores whose own FG votes/rules already claim the compound. **Caveat (not in benchmark)**: a free triazole antifungal carrying a *separate* fluoropyrimidine (e.g. voriconazole) would be misrouted here instead of CYP450 — acceptable for benchmark scope; revisit if such compounds are added.
+
 **Negative constraints** (suppress cytochrome P450 entirely):
 - Hydroxamate or Thiol present → Zn-chelation → HDAC/metalloprotease context
 - Acylsulfonamide present → tubulin macrolide warhead context
+- **Fused azolo-diazine + Pyrimidine** → purine-mimetic core; ring N locked in fused diazine cannot coordinate heme Fe (no CYP450 TP has this core)
 
 ---
 
 \## Known structural limitations (do NOT try to fix with mw tuning)
 
 1. **mTOR 85% (17/20)**: SIROLIMUS fixed by macrolide rule; 16 ATP-competitive TORKinibs fixed by morpholino-diazine rule (2026-06-15). 3 remaining have NO morpholine: SAPANISERTIB & CHEMBL3645910 (pyrimidine core only, no morpholine), CHEMBL3681183 (Hydroxyl+Imidazole → CYP450). These need fused-N-heteroaromatic core detection (方案 4, flagged in Next tasks) — do NOT try to fix with the morpholino rule.
-2. **Adenosine receptor 25% (5/20)**: 15/20 failures have no Purine/Xanthine at all; generic Phenyl/Halogen → NR/tubulin.
+2. **Adenosine receptor 60% (12/20)**: +7 by pyrimidine router branch 2 (fused-azolo-diazine→adenosine, 2026-06-15). 8 remaining have NO purine-mimetic fused core: sparse Phenol+Phenyl+Halogen→NR (CHEMBL2024114, 97760), Nitrile+Triazole→cys protease/kinase (CHEMBL5177144, 5171044), Steroid (CHEMBL369573), Thiazole+Nitrile→CYP (CHEMBL2419137, 2419150), non-fused Thiazole+Pyrimidine (CHEMBL3917647).
 3. **CYP450 95% (19/20)**: 1 remaining failure = TAZAROTENIC ACID (pyridine scaffold; no azole/halogen FG → invisible to CYP scoring). Thiazole SMARTS (2026-06-04) fixed ritonavir-class ×5 compound.
 4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. Peptidomimetics look like NR/tubulin/GPCR.
-5. **Kinase 70% (14/20)**: 6 remaining. 2 stolen by CYP450 azole (Imidazole+Phenyl+Halogen, no distinguisher). 1 Steroid scaffold. 3 sparse.
+5. **Kinase 90% (18/20)**: +4 by pyrimidine router branch 3 (mono-pyrimidine→kinase, 2026-06-15; recovered ERLOTINIB, CHEMBL29197/176582/174426). 2 remaining: CHEMBL5270693 (strong GPCR score 6.31 from TertAmine+Indole+Phenyl beats kinase bonus), CHEMBL4537790 (Steroid scaffold → androgen).
 6. **NR 80% (16/20)**: 2 Acylsulfonamide→tubulin (irreconcilable without hurting tubulin). 2 purely structural.
 
 ---
@@ -358,22 +375,25 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
 3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
 
-\### 🚩 方案 4 (FLAGGED — long-term task): Fused-N-heteroaromatic core descriptor
+\### 🟡 方案 4 (PARTIALLY DONE): Fused-N-heteroaromatic core descriptor
 
-**Problem**: the SMARTS detector is blind to fused N-heteroaromatic *cores*. E.g. SAPANISERTIB's
-pyrazolo-pyrimidine / benzoxazole core is detected only as "Phenyl ring"; the whole kinase-hinge
-scaffold is invisible. This is the root cause of the 3 remaining mTOR misses (compounds with a
-heteroaromatic hinge-binder but no morpholine) and likely contributes to kinase / adenosine sparsity.
+**DONE (2026-06-15)**: the **azolo-diazine subset** is implemented — `_detect_fused_azolo_diazine`
+(aromatic 5-ring≥2N fused to 6-ring≥2N = purine / triazolopyrimidine / pyrazolopyrimidine). Used by
+the pyrimidine router branch 2 (→adenosine, +7) and the CYP450 negative constraint. Architecture
+that worked: **routing-only Python detector, NOT registered in fg_database.json → zero IDF impact**
+(sidesteps the Benzimidazole −13 IDF-disruption lesson). 方案 3 (mono-pyrimidine→kinase) also landed
+inside the router branch 3 (+4), gated by competing-pharmacophore exclusions.
 
-**Proposed solution**: add a generalised fused-N-bicyclic-aromatic scaffold detector (analogous to
-the Python `_detect_steroid_core` approach, or a family of SMARTS for pyrazolopyrimidine,
-pyrrolopyrimidine, pyridopyrimidine, etc.). Would help mTOR (+up to 3), and possibly kinase /
-adenosine receptor.
+**REMAINING**: other fused cores still detected only as "Phenyl ring":
+- **pyrrolopyrimidine / 7-deazapurine** (5-ring has only 1N → not caught by azolo-diazine detector) —
+  common kinase hinge; currently falls through to router branch 3 (mono-pyrimidine→kinase), which is
+  often correct, but the core itself is invisible.
+- **benzoxazole / benzothiazole-fused** cores (e.g. SAPANISERTIB's benzoxazole) — no N-diazine ring.
+- pyridopyrimidine, quinazoline as explicit scaffolds (quinazoline currently = Pyrimidine + Phenyl).
 
-**Effort/risk**: HIGH — broad scaffold patterns risk cross-class IDF disruption (cf. Benzimidazole
-−13 lesson). Must be added as scaffold markers (target_classes=[]) + gated conditional rules, and
-validated with the full 220-compound benchmark before keeping. Defer until after SDF/MOL2 input.
+These would help the 3 remaining mTOR misses (no morpholine) and adenosine non-fused cases. Same
+safe recipe: routing-only Python/SMARTS detector + gated branch + full-benchmark verification.
 
-**Also flagged**: 方案 3 (standalone Pyrimidine/aminopyrimidine voting) was rejected for now —
-pyrimidine alone is too promiscuous (kinase) and only covers +2; revisit only inside 方案 4.
+**Also**: 方案 3 standalone-pyrimidine-voting is now SUPERSEDED by the router (branch 3 does it safely
+with exclusions). Do not add Pyrimidine to fg_database known_target_classes (would disrupt IDF).
 

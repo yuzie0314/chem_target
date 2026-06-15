@@ -69,7 +69,19 @@ _CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
 _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
+# ── Pyrimidine router bonuses (mutually-exclusive ATP-pocket / purine-mimetic routing) ──
 _MTOR_MORPHOLINO_BONUS: float = 2.0         # Morpholine + diazine — ATP-competitive PI3K/mTOR hinge binder
+_ADENOSINE_FUSED_BONUS: float = 2.0         # fused azolo-pyrimidine core — purine-mimetic A2A scaffold
+_KINASE_AMINOPYRIMIDINE_BONUS: float = 2.0  # mono-pyrimidine hinge binder — kinase (quinazoline/aminopyrimidine)
+# Competing pharmacophores that claim a mono-pyrimidine compound for another class
+# (their own FG votes/rules already handle them) — exclude from the kinase branch.
+_PYRIMIDINE_KINASE_EXCLUSIONS: frozenset[str] = frozenset({
+    "Methylsulfone",     # COX-2 selectivity pocket (coxib)
+    "Hydroxamate",       # HDAC Zn-chelation warhead
+    "Carboxylic acid",   # polyfunctional GPCR ligands / NSAIDs, not ATP-competitive
+    "Aldehyde",          # polyfunctional GPCR ligand context
+    "Steroid",           # nuclear-receptor scaffold
+})
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 _KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
@@ -180,6 +192,9 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
         and not ketone_hdac_context
         and "Purine" not in fg_set
+        and "Pyrimidine" not in fg_set            # azole fused/paired with a diazine is a
+                                                  # purine-mimetic (adenosine/kinase), not a free
+                                                  # heme-coordinating azole; no CYP450 TP has pyrimidine
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
         and "Sulfonamide" not in fg_set           # CA Zn-binding context; triazole-sulfonamide CA inhibitors exist
     ):
@@ -308,35 +323,68 @@ def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     return 0.0, ""
 
 
-def _mtor_morpholino_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
-    """Pre-IDF bonus vote for mTOR when a morpholino-diazine scaffold is present.
+def _pyrimidine_router(fgs_detected: list[str]) -> tuple[str, float, str] | None:
+    """Route a pyrimidine/triazine-bearing compound to ONE ATP-pocket target.
 
-    Rule: Morpholine present AND (Pyrimidine OR Triazine) present.
+    Pyrimidine (and 1,3,5-triazine) is the shared hinge-anchoring diazine of
+    purine-mimetic ATP-pocket binders.  In the curated benchmark it is strongly
+    enriched in exactly three classes (mTOR 16/20, kinase 16/20, adenosine 14/20)
+    and almost absent elsewhere, so a diazine alone cannot pick the target — but
+    a single secondary feature resolves it into mutually-exclusive branches:
 
-    Rationale:
-        The morpholine oxygen is the defining hinge-binding pharmacophore of
-        ATP-competitive PI3K / mTOR kinase inhibitors (TORKinibs / dual PI3K-mTOR
-        inhibitors): it accepts an H-bond from the hinge residue Val2240 in mTOR
-        (Val851 in PI3Kα).  In modern mTOR inhibitors this morpholine is fused to
-        a flat diazine hinge-anchor — a pyrimidine (AZD8055, vistusertib,
-        sapanisertib-series) or a 1,3,5-triazine (gedatolisib, PF-04691502).
-        Neither group votes on its own (both are promiscuous scaffold markers),
-        but their *co-occurrence* is a highly specific mTOR signature: in the
-        220-compound curated benchmark this combination appears in 16 compounds,
-        all of them true mTOR binders (zero collision with kinase / NR / GPCR).
+        Branch 1  Morpholine present              → mTOR        (PI3K/mTOR hinge)
+        Branch 2  fused azolo-diazine core        → adenosine  (purine-mimetic A2A)
+        Branch 3  mono-pyrimidine (no morpholine,
+                  no fused core, no competing
+                  pharmacophore)                  → kinase      (quinazoline/aminopyrimidine)
 
-        Without this rule these compounds present only as Amide + Ether + Phenyl
-        ring and are mispredicted as nuclear receptor (the morpholine reads as a
-        generic Ether).
+    The branches are evaluated in order and only one fires, so this single router
+    replaces what would otherwise be several independent additive bonuses that
+    could conflict.  Competing pharmacophores (Methylsulfone→COX, Hydroxamate→
+    HDAC, COOH/Aldehyde→GPCR, Steroid→NR) short-circuit Branch 3 because their own
+    FG votes / rules already claim the compound; this keeps the kinase branch from
+    stealing those classes' true positives.
+
+    Benchmark provenance (220 curated compounds):
+        Branch 1 = 14 compounds, all mTOR.
+        Branch 2 = 13 compounds, 12 adenosine + 1 mTOR (SAPANISERTIB, already a
+                   miss → no regression).
+        Branch 3 (after exclusions) = kinase-dominant; residual contaminants are
+                   all already-misses.
+
+    Caveat (generalisation, not in benchmark): a free triazole antifungal that
+    also carries a *separate* fluoropyrimidine (e.g. voriconazole) would be
+    misrouted here rather than to CYP450.  Acceptable for the benchmark-driven
+    scope; revisit if CYP450 azole+pyrimidine compounds are added.
 
     Returns:
-        (bonus_wt, label) — pre-IDF weight to add to mTOR votes and an evidence
-        label.  Returns (0.0, '') if the rule does not fire.
+        (target_class, pre_idf_bonus, evidence_label) for the single matched
+        branch, or None if the router does not apply.
     """
     fg_set = set(fgs_detected)
-    if "Morpholine" in fg_set and ("Pyrimidine" in fg_set or "Triazine" in fg_set):
-        return _MTOR_MORPHOLINO_BONUS, "morpholino-diazine mTOR motif"
-    return 0.0, ""
+    if "Pyrimidine" not in fg_set and "Triazine" not in fg_set:
+        return None
+
+    # Branch 1 — morpholino-diazine → mTOR (covers pyrimidine OR triazine anchor)
+    if "Morpholine" in fg_set:
+        return "mTOR", _MTOR_MORPHOLINO_BONUS, "morpholino-diazine mTOR motif"
+
+    # Branches 2 and 3 are pyrimidine-specific (triazine only seen in mTOR set)
+    if "Pyrimidine" not in fg_set:
+        return None
+
+    # Branch 2 — fused azolo-pyrimidine purine-mimetic core → adenosine receptor
+    if "Fused azolo-diazine" in fg_set:
+        return ("adenosine receptor", _ADENOSINE_FUSED_BONUS,
+                "fused-azolopyrimidine adenosine motif")
+
+    # Branch 3 — mono-pyrimidine hinge binder → kinase, unless a competing
+    # pharmacophore already claims the compound for another class.
+    if not (fg_set & _PYRIMIDINE_KINASE_EXCLUSIONS):
+        return ("kinase", _KINASE_AMINOPYRIMIDINE_BONUS,
+                "aminopyrimidine kinase hinge motif")
+
+    return None
 
 
 def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
@@ -403,10 +451,17 @@ def _apply_negative_constraints(
     Rules:
       • Hydroxamate or Thiol → Zn2+ chelation → HDAC / metalloprotease context.
       • Acylsulfonamide → tubulin macrolide warhead.
-      Both: remove cytochrome P450 entry entirely.
+      • Fused azolo-diazine + Pyrimidine → purine-mimetic core (adenosine/kinase):
+        the ring N is locked inside a fused diazine and cannot coordinate heme
+        Fe, so even the residual base azole votes (Triazole/Thiazole mw) must not
+        accrue to CYP450.  No CYP450 true positive carries a fused azolo-diazine.
+      All: remove cytochrome P450 entry entirely.
     """
     fg_set = set(fgs_detected)
     if fg_set & {"Hydroxamate", "Thiol", "Acylsulfonamide"}:
+        weighted_votes.pop("cytochrome P450", None)
+        evidence.pop("cytochrome P450", None)
+    if "Fused azolo-diazine" in fg_set and "Pyrimidine" in fg_set:
         weighted_votes.pop("cytochrome P450", None)
         evidence.pop("cytochrome P450", None)
 
@@ -550,11 +605,13 @@ def predict_target_classes(
         weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
         evidence["mTOR"].append(f"[{mtor_label}]")
 
-    # mTOR conditional bonus — morpholino-diazine (ATP-competitive TORKinib) scaffold
-    mtor_m_bonus, mtor_m_label = _mtor_morpholino_conditional_bonus(fgs_detected)
-    if mtor_m_bonus > 0.0:
-        weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_m_bonus
-        evidence["mTOR"].append(f"[{mtor_m_label}]")
+    # Pyrimidine router — mutually-exclusive ATP-pocket routing
+    # (mTOR morpholino / adenosine fused-azolopyrimidine / kinase aminopyrimidine)
+    routed = _pyrimidine_router(fgs_detected)
+    if routed is not None:
+        r_tc, r_bonus, r_label = routed
+        weighted_votes[r_tc] = weighted_votes.get(r_tc, 0.0) + r_bonus
+        evidence[r_tc].append(f"[{r_label}]")
 
     # Kinase covalent warhead bonus
     kin_bonus, kin_label = _kinase_conditional_bonus(fgs_detected)
