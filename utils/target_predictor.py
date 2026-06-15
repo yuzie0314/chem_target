@@ -69,6 +69,7 @@ _CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
 _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
+_MTOR_MORPHOLINO_BONUS: float = 2.0         # Morpholine + diazine — ATP-competitive PI3K/mTOR hinge binder
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 _KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
@@ -307,6 +308,37 @@ def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     return 0.0, ""
 
 
+def _mtor_morpholino_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for mTOR when a morpholino-diazine scaffold is present.
+
+    Rule: Morpholine present AND (Pyrimidine OR Triazine) present.
+
+    Rationale:
+        The morpholine oxygen is the defining hinge-binding pharmacophore of
+        ATP-competitive PI3K / mTOR kinase inhibitors (TORKinibs / dual PI3K-mTOR
+        inhibitors): it accepts an H-bond from the hinge residue Val2240 in mTOR
+        (Val851 in PI3Kα).  In modern mTOR inhibitors this morpholine is fused to
+        a flat diazine hinge-anchor — a pyrimidine (AZD8055, vistusertib,
+        sapanisertib-series) or a 1,3,5-triazine (gedatolisib, PF-04691502).
+        Neither group votes on its own (both are promiscuous scaffold markers),
+        but their *co-occurrence* is a highly specific mTOR signature: in the
+        220-compound curated benchmark this combination appears in 16 compounds,
+        all of them true mTOR binders (zero collision with kinase / NR / GPCR).
+
+        Without this rule these compounds present only as Amide + Ether + Phenyl
+        ring and are mispredicted as nuclear receptor (the morpholine reads as a
+        generic Ether).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to mTOR votes and an evidence
+        label.  Returns (0.0, '') if the rule does not fire.
+    """
+    fg_set = set(fgs_detected)
+    if "Morpholine" in fg_set and ("Pyrimidine" in fg_set or "Triazine" in fg_set):
+        return _MTOR_MORPHOLINO_BONUS, "morpholino-diazine mTOR motif"
+    return 0.0, ""
+
+
 def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus for adenosine receptor when Purine scaffold is present.
 
@@ -512,11 +544,17 @@ def predict_target_classes(
         weighted_votes["COX"] = weighted_votes.get("COX", 0.0) + cox_bonus
         evidence["COX"].append(f"[{cox_label}]")
 
-    # mTOR conditional bonus
+    # mTOR conditional bonus — macrolide (rapalog) scaffold
     mtor_bonus, mtor_label = _mtor_conditional_bonus(fgs_detected)
     if mtor_bonus > 0.0:
         weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
         evidence["mTOR"].append(f"[{mtor_label}]")
+
+    # mTOR conditional bonus — morpholino-diazine (ATP-competitive TORKinib) scaffold
+    mtor_m_bonus, mtor_m_label = _mtor_morpholino_conditional_bonus(fgs_detected)
+    if mtor_m_bonus > 0.0:
+        weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_m_bonus
+        evidence["mTOR"].append(f"[{mtor_m_label}]")
 
     # Kinase covalent warhead bonus
     kin_bonus, kin_label = _kinase_conditional_bonus(fgs_detected)

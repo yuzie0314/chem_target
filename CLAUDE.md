@@ -38,10 +38,10 @@ based on functional group analysis. Long-term: consultancy tool + SaaS.
 chem_target/
 ├── constants/      # Static lookup tables only. No logic.
 │   ├── fg_names.py     # FG_NAMES: rdkit fr_* → human readable (legacy)
-│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (37 patterns + Steroid Python = 38 total)
+│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (40 patterns + Steroid Python = 41 total)
 ├── db/             # Auto-generated. Never hand-edit.
-│   ├── fg_database.json       # 38 FG metadata: smarts/targets/mechanistic_weight
-│   ├── fg_residue_table.csv   # 37 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json       # 41 FG metadata: smarts/targets/mechanistic_weight
+│   ├── fg_residue_table.csv   # 40 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json  # RCSB CCD SMILES cache
 │   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
@@ -234,29 +234,32 @@ conda environment name: `chem\_target`
 
 
 
-\## Current status (2026-06-04)
+\## Current status (2026-06-15)
 
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 37 FG SMARTS + Steroid Python = 38 total (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (38 entries incl. Triazole+Thiazole+Benzimidazole, mechanistic_weight) | ✅ Done |
-| `db/fg_residue_table.csv` (BioLiP rebuild, 37 SMARTS + Steroid columns) | ✅ Done |
+| 40 FG SMARTS + Steroid Python = 41 total (`constants/fg_smarts.py`) | ✅ Done |
+| `db/fg_database.json` (41 entries incl. Triazole+Thiazole+Benzimidazole+Morpholine+Pyrimidine+Triazine, mechanistic_weight) | ✅ Done |
+| `db/fg_residue_table.csv` (BioLiP rebuild, 40 SMARTS + Steroid columns) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Benchmark Top-1: 161/220 = 73.2%** | ✅ Current best |
-| **Benchmark Top-3: 169/220 = 76.8%** | ✅ Current best |
+| **Benchmark Top-1: 177/220 = 80.5%** | ✅ Current best |
+| **Benchmark Top-3: 185/220 = 84.1%** | ✅ Current best |
 | CYP450 conditional motif scoring (azole rule, Thiazole added) | ✅ Done |
 | Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide → suppress CYP450) | ✅ Done |
 | COX indole-sulfonamide motif | ✅ Done |
-| mTOR macrolide conditional motif | ✅ Done |
+| mTOR macrolide conditional motif (rapalog) | ✅ Done |
+| mTOR morpholino-diazine motif (ATP-competitive TORKinib) | ✅ Done |
 | Adenosine receptor Purine bonus | ✅ Done |
 | Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
 | Thiazole SMARTS + BioLiP table rebuild | ✅ Done |
 | Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
+| Morpholine + Pyrimidine + Triazine SMARTS (scaffold markers, no target votes) | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
+| Fused-N-heteroaromatic core descriptor (方案 4 — see Next tasks) | 🔲 Flagged |
 | Shape / physicochemical descriptors | 🔲 Future |
 
 ---
@@ -275,7 +278,7 @@ conda environment name: `chem\_target`
 | Kinase | 14/20 = 70% | 15/20 | Fixed +6 by αβunsat warhead + Sulfonamide+TertAmine |
 | CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural |
 | Adenosine receptor | 5/20 = 25% | 5/20 | Fixed +1 by Purine bonus; 15 structural |
-| mTOR | 1/20 = 5% | 1/20 | Fixed SIROLIMUS; 19 ATP-competitive structural |
+| mTOR | 17/20 = 85% | 17/20 | Fixed +16 by morpholino-diazine motif (16 ATP-competitive TORKinibs); +SIROLIMUS by macrolide rule. 3 remaining have no morpholine (SAPANISERTIB, CHEMBL3645910, CHEMBL3681183) |
 
 ---
 
@@ -292,6 +295,9 @@ conda environment name: `chem\_target`
 | Triazole | 1.5 | cytochrome P450 | Triazole antifungal heme-Fe coordination (fluconazole-class) |
 | Thiazole | 1.5 | cytochrome P450 | Ritonavir-class CYP3A4 inhibitor; thiazole N coordinates heme Fe analogously to imidazole |
 | Benzimidazole | 1.0 | (none — scaffold marker) | Benzene+imidazole fused; Imidazole FG already handles CYP450 voting for benzimidazole compounds |
+| Morpholine | 1.0 | (none — scaffold marker) | PI3K/mTOR hinge-binder; promiscuous alone (gefitinib). Voting via morpholino-diazine conditional rule |
+| Pyrimidine | 1.0 | (none — scaffold marker) | 1,3-diazine hinge-anchor; promiscuous alone. Voting via morpholino-diazine conditional rule |
+| Triazine | 1.0 | (none — scaffold marker) | 1,3,5-triazine hinge-anchor (gedatolisib class). Voting via morpholino-diazine conditional rule |
 | All others | 1.0 | — | Default |
 
 ---
@@ -309,6 +315,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 | CYP450 amide-halide | Amide + Phenyl + Halogen, no Sulfonamide/COOH/Imidazole/αβunsat/Ether | cytochrome P450 | +0.6 | Minimal amide-halide CYP substrate (raised from 0.5 to compensate IDF shift from Thiazole) |
 | COX indole-sulfonamide | Indole + Sulfonamide | COX | +2.0 | Indole scaffold + COX-2 selectivity pocket |
 | mTOR macrolide | Macrolide, no Thiol/αβunsat/Acylsulfonamide | mTOR | +2.0 | Rapamycin-class allosteric FKBP12 binding |
+| mTOR morpholino-diazine | Morpholine + (Pyrimidine OR Triazine) | mTOR | +2.0 | ATP-competitive TORKinib: morpholine O H-bonds hinge Val2240. In curated benchmark this combo = 16 compounds, all mTOR (zero collision) |
 | Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
 | Kinase αβunsat warhead | α,β-unsat. carbonyl present | kinase | +0.5 | Covalent Michael acceptor warhead (EGFR) |
 | Kinase sulfonamide-amine | Sulfonamide + TertAmine | kinase | +2.0 | Kinase linker hijacked by CA (Sulfonamide mw=2.0) |
@@ -321,7 +328,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 \## Known structural limitations (do NOT try to fix with mw tuning)
 
-1. **mTOR 5% (1/20)**: SIROLIMUS fixed. 19/20 are Ether/Amide/Phenyl ATP-competitive → NR wins (no mTOR-specific FG).
+1. **mTOR 85% (17/20)**: SIROLIMUS fixed by macrolide rule; 16 ATP-competitive TORKinibs fixed by morpholino-diazine rule (2026-06-15). 3 remaining have NO morpholine: SAPANISERTIB & CHEMBL3645910 (pyrimidine core only, no morpholine), CHEMBL3681183 (Hydroxyl+Imidazole → CYP450). These need fused-N-heteroaromatic core detection (方案 4, flagged in Next tasks) — do NOT try to fix with the morpholino rule.
 2. **Adenosine receptor 25% (5/20)**: 15/20 failures have no Purine/Xanthine at all; generic Phenyl/Halogen → NR/tubulin.
 3. **CYP450 95% (19/20)**: 1 remaining failure = TAZAROTENIC ACID (pyridine scaffold; no azole/halogen FG → invisible to CYP scoring). Thiazole SMARTS (2026-06-04) fixed ritonavir-class ×5 compound.
 4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. Peptidomimetics look like NR/tubulin/GPCR.
@@ -350,4 +357,23 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 1. **SDF / MOL2 input support** (`utils/io_handler.py`) — currently only CSV supported
 2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
 3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
+
+\### 🚩 方案 4 (FLAGGED — long-term task): Fused-N-heteroaromatic core descriptor
+
+**Problem**: the SMARTS detector is blind to fused N-heteroaromatic *cores*. E.g. SAPANISERTIB's
+pyrazolo-pyrimidine / benzoxazole core is detected only as "Phenyl ring"; the whole kinase-hinge
+scaffold is invisible. This is the root cause of the 3 remaining mTOR misses (compounds with a
+heteroaromatic hinge-binder but no morpholine) and likely contributes to kinase / adenosine sparsity.
+
+**Proposed solution**: add a generalised fused-N-bicyclic-aromatic scaffold detector (analogous to
+the Python `_detect_steroid_core` approach, or a family of SMARTS for pyrazolopyrimidine,
+pyrrolopyrimidine, pyridopyrimidine, etc.). Would help mTOR (+up to 3), and possibly kinase /
+adenosine receptor.
+
+**Effort/risk**: HIGH — broad scaffold patterns risk cross-class IDF disruption (cf. Benzimidazole
+−13 lesson). Must be added as scaffold markers (target_classes=[]) + gated conditional rules, and
+validated with the full 220-compound benchmark before keeping. Defer until after SDF/MOL2 input.
+
+**Also flagged**: 方案 3 (standalone Pyrimidine/aminopyrimidine voting) was rejected for now —
+pyrimidine alone is too promiscuous (kinase) and only covers +2; revisit only inside 方案 4.
 

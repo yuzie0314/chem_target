@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 37 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 38 functional groups.
+FG_SMARTS defines 40 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 41 functional groups.
 
 Used by
 -------
@@ -80,6 +80,16 @@ FG_SMARTS: dict[str, str] = {
     #   acceptable: each level provides independent pharmacological information.
     "Ether":                    "[OX2;!$(O=*);!$([OX2H]);!$(OC=O)]([#6])[#6]",
     "Methylenedioxy":           "c1ccc2c(c1)OCO2",
+    # Morpholine: saturated 6-membered ring with O and N at the 1,4 positions.
+    #   The morpholine oxygen is the signature hinge-binding group of
+    #   ATP-competitive PI3K / mTOR kinase inhibitors (AZD8055, vistusertib,
+    #   dactolisib/BEZ235, gedatolisib), H-bonding to the hinge residue
+    #   (Val2240 in mTOR / Val851 in PI3Kα). Scaffold marker only — mTOR voting
+    #   is handled by the morpholino-diazine conditional rule in
+    #   target_predictor.py (Morpholine alone is promiscuous: gefitinib, etc.).
+    #   Hierarchical overlap with Ether (ring O) and Tertiary amine (N-alkyl ring
+    #   N) is intentional. Aliphatic SMARTS — does not match aromatic oxazines.
+    "Morpholine":               "O1CCNCC1",
 
     # ── Amines ────────────────────────────────────────────────────────────────
     # Each substitution level has a different pKa, H-bond profile, and
@@ -123,6 +133,19 @@ FG_SMARTS: dict[str, str] = {
     #   Validated: matches omeprazole, mebendazole, N-methyl-benzimidazole;
     #   does NOT match purine, indole, benzoxazole, or thiazole.
     "Benzimidazole":            "c1ccc2[nH,n]cnc2c1",
+    # Pyrimidine: 1,3-diazine — 6-membered aromatic ring with N at positions 1,3.
+    #   Core heteroaromatic of ATP-competitive PI3K/mTOR inhibitors (paired with
+    #   a morpholine hinge-binder) and many kinase scaffolds. Scaffold marker
+    #   only (target_classes=[]): pyrimidine alone is far too promiscuous to vote.
+    #   mTOR voting is gated on the Morpholine + (Pyrimidine | Triazine) combo in
+    #   target_predictor.py. Substructure of Purine (fused) — hierarchical overlap
+    #   is intentional and harmless because it casts no target votes.
+    "Pyrimidine":               "c1cncnc1",
+    # Triazine: 1,3,5-triazine — 6-membered aromatic ring with three symmetric N.
+    #   Replaces pyrimidine as the hinge-anchoring heteroarene in the
+    #   morpholino-triazine PI3K/mTOR class (gedatolisib, PF-04691502). Scaffold
+    #   marker only; voting handled by the morpholino-diazine conditional rule.
+    "Triazine":                 "c1ncncn1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
