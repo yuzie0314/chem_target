@@ -259,8 +259,8 @@ conda environment name: `chem\_target`
 | Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
 | Morpholine + Pyrimidine + Triazine SMARTS (scaffold markers, no target votes) | ✅ Done |
 | `_detect_fused_azolo_diazine` Python detector (routing-only, not in fg_database → no IDF impact) | ✅ Done |
+| 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
-| Fused-N-heteroaromatic core descriptor (方案 4 — azolo-diazine subset DONE; other cores pending) | 🟡 Partial |
 | Shape / physicochemical descriptors | 🔲 Future |
 
 ---
@@ -375,25 +375,26 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
 3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
 
-\### 🟡 方案 4 (PARTIALLY DONE): Fused-N-heteroaromatic core descriptor
+\### ✅ 方案 4 (DONE — detection complete; no further scoring ROI on this benchmark)
 
-**DONE (2026-06-15)**: the **azolo-diazine subset** is implemented — `_detect_fused_azolo_diazine`
-(aromatic 5-ring≥2N fused to 6-ring≥2N = purine / triazolopyrimidine / pyrazolopyrimidine). Used by
-the pyrimidine router branch 2 (→adenosine, +7) and the CYP450 negative constraint. Architecture
-that worked: **routing-only Python detector, NOT registered in fg_database.json → zero IDF impact**
-(sidesteps the Benzimidazole −13 IDF-disruption lesson). 方案 3 (mono-pyrimidine→kinase) also landed
-inside the router branch 3 (+4), gated by competing-pharmacophore exclusions.
+**Functional core (2026-06-15)**: `_detect_fused_azolo_diazine` (aromatic 5-ring≥2N fused to
+6-ring≥2N = purine / triazolopyrimidine / pyrazolopyrimidine). Drives the pyrimidine router branch 2
+(→adenosine, +7) and the CYP450 negative constraint. Recipe that worked: **routing-only Python
+detector, NOT in fg_database.json → zero IDF impact** (sidesteps the Benzimidazole −13 lesson).
 
-**REMAINING**: other fused cores still detected only as "Phenyl ring":
-- **pyrrolopyrimidine / 7-deazapurine** (5-ring has only 1N → not caught by azolo-diazine detector) —
-  common kinase hinge; currently falls through to router branch 3 (mono-pyrimidine→kinase), which is
-  often correct, but the core itself is invisible.
-- **benzoxazole / benzothiazole-fused** cores (e.g. SAPANISERTIB's benzoxazole) — no N-diazine ring.
-- pyridopyrimidine, quinazoline as explicit scaffolds (quinazoline currently = Pyrimidine + Phenyl).
+**Annotation cores (2026-06-15)**: `_SCAFFOLD_ANNOTATIONS` in fg_detector.py adds Quinazoline /
+Pyrrolopyrimidine / Pyridopyrimidine / Benzoxazole as **annotation-only** labels (not in FG_SMARTS,
+not in fg_database, not consumed by any rule). Purpose: scaffold cores no longer show up merely as
+"Phenyl ring" in reports; infrastructure for future rules. **Zero benchmark change** (cast no votes).
 
-These would help the 3 remaining mTOR misses (no morpholine) and adenosine non-fused cases. Same
-safe recipe: routing-only Python/SMARTS detector + gated branch + full-benchmark verification.
+**ROI finding (verified 2026-06-15)** — do NOT add scoring rules for remaining cores:
+Of the 32 misses at 188/220, only 4 carry an undetected fused-N core and **none are fixable by core
+detection**: CHEMBL4108739/353760 (serine protease peptidomimetics — benzoxazole/benzothiazole, but
+no SP signal), SAPANISERTIB (mTOR — benzoxazole; routing benzoxazole→mTOR is promiscuous, fixes only
+1), GS-9256 (tubulin — quinoline; documented irreconcilable). The remaining misses are structural
+(no Benzamidine, Acylsulfonamide→tubulin, sparse Phenol+Halogen, Steroid), not core-detection-limited.
+The azolo-diazine subset already captured all fused-core scoring ROI this benchmark offers.
 
-**Also**: 方案 3 standalone-pyrimidine-voting is now SUPERSEDED by the router (branch 3 does it safely
+**Also**: 方案 3 standalone-pyrimidine-voting is SUPERSEDED by the router (branch 3 does it safely
 with exclusions). Do not add Pyrimidine to fg_database known_target_classes (would disrupt IDF).
 

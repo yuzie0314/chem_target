@@ -193,6 +193,31 @@ _PYTHON_DETECTORS: dict[str, Callable[[Chem.Mol], bool]] = {
 }
 
 
+# ── Annotation-only fused-N-heteroaromatic scaffold cores (方案 4) ─────────────
+#
+# These label fused heteroaromatic *cores* that the FG_SMARTS layer would
+# otherwise see only as a bare "Phenyl ring".  They are ANNOTATION-ONLY:
+#   • NOT in FG_SMARTS        → not a column in the BioLiP residue table
+#   • NOT in fg_database.json → cast no IDF-weighted votes, no IDF shift
+#   • not consumed by any conditional rule (unlike "Fused azolo-diazine", which
+#     drives the pyrimidine router)
+# Their sole purpose is richer, mechanistically-correct scaffold reporting (and
+# infrastructure for future rules).  Adding them cannot change benchmark scores.
+# Hierarchical overlap with Pyrimidine / Phenyl ring is intentional.
+_SCAFFOLD_ANNOTATIONS: dict[str, str] = {
+    "Quinazoline":        "c1ccc2ncncc2c1",        # gefitinib/erlotinib/lapatinib kinase core
+    "Pyrrolopyrimidine":  "c1cc2cncnc2[nH,n]1",    # 7-deazapurine kinase hinge (ruxolitinib)
+    "Pyridopyrimidine":   "c1ccc2ncncc2n1",        # piritrexim / dihydrofolate-reductase class
+    "Benzoxazole":        "c1ccc2ocnc2c1",         # benzo[d]oxazole scaffold
+}
+
+_SCAFFOLD_PATTERNS: dict[str, Chem.Mol] = {
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in _SCAFFOLD_ANNOTATIONS.items()
+    if Chem.MolFromSmarts(smarts) is not None
+}
+
+
 # ── SMARTS-based detection (primary) ─────────────────────────────────────────
 
 def detect_smarts(smiles: str) -> list[str]:
@@ -206,8 +231,11 @@ def detect_smarts(smiles: str) -> list[str]:
         smiles: Input molecule as SMILES string.
 
     Returns:
-        List of FG names (keys of FG_SMARTS plus "Steroid") present in the
-        molecule.  Empty list if SMILES is invalid or no FG matches.
+        List of names present: FG_SMARTS keys, Python detectors ("Steroid",
+        "Fused azolo-diazine"), and annotation-only scaffold cores
+        (Quinazoline / Pyrrolopyrimidine / Pyridopyrimidine / Benzoxazole).
+        Only FG_SMARTS keys + Steroid feed residue scoring; the rest are
+        routing/annotation. Empty list if SMILES is invalid or nothing matches.
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -223,6 +251,11 @@ def detect_smarts(smiles: str) -> list[str]:
     for fg_name, detector in _PYTHON_DETECTORS.items():
         if detector(mol):
             results.append(fg_name)
+
+    # Annotation-only fused-N-heteroaromatic scaffold cores (no scoring impact)
+    for name, pattern in _SCAFFOLD_PATTERNS.items():
+        if pattern is not None and mol.GetSubstructMatches(pattern):
+            results.append(name)
 
     return results
 
