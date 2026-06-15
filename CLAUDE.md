@@ -246,8 +246,11 @@ conda environment name: `chem\_target`
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Benchmark Top-1: 188/220 = 85.5%** | ✅ Current best |
-| **Benchmark Top-3: 196/220 = 89.1%** | ✅ Current best |
+| **Core 11-class Top-1: 188/220 = 85.5%** (mechanistic classes) | ✅ Current best |
+| **Core 11-class Top-3: 196/220 = 89.1%** | ✅ Current best |
+| **Extended 13-class Top-1: 198/260 = 76.2%** (incl. MAO+COMT) | ✅ |
+| MAO covalent-warhead rule (Propargylamine/Hydrazine) | ✅ Done |
+| COMT (nitrocatechol via existing Phenol+Catechol) | ✅ 8/20 (pChEMBL-bias limited) |
 | CYP450 conditional motif scoring (azole rule, Thiazole added, Pyrimidine guard) | ✅ Done |
 | Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide + fused-azolo-diazine → suppress CYP450) | ✅ Done |
 | COX indole-sulfonamide motif | ✅ Done |
@@ -280,6 +283,20 @@ conda environment name: `chem\_target`
 | CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural. Pyrimidine guard added (no CYP450 TP has pyrimidine) |
 | Adenosine receptor | 12/20 = 60% | 12/20 | +7 by pyrimidine router (fused-azolo-diazine→adenosine, branch 2). 8 remaining: no purine-mimetic core (Phenol/Halogen sparse, or Nitrile/Steroid) |
 | mTOR | 17/20 = 85% | 17/20 | Fixed +16 by morpholino-diazine motif (16 ATP-competitive TORKinibs); +SIROLIMUS by macrolide rule. 3 remaining have no morpholine (SAPANISERTIB, CHEMBL3645910, CHEMBL3681183) |
+| COMT | 8/20 = 40% | — | nitrocatechol (entacapone/opicapone) via existing Phenol+Catechol; other 12 = research series w/o nitrocatechol (pChEMBL-bias) |
+| MAO | 2/20 = 10% | — | propargylamine (clorgiline) via MAO warhead rule; 18 = single research series (Sec/Tert amine, no MAO pharmacophore) |
+
+**Note on the 13-class extended set (260 compounds):** MAO + COMT were added 2026-06-15 with
+*correct* ChEMBL target IDs (MAO=CHEMBL1951/2039, COMT=CHEMBL2023). Their low scores reflect a
+**pChEMBL-sampling bias**: the top-20 highest-affinity ChEMBL compounds for these targets are modern
+research analogs that lack the classic covalent pharmacophores (propargylamine, nitrocatechol) the
+marketed drugs carry — not a rule gap. Adding the warhead rule cannot capture analogs that don't
+carry the warhead. The other 5 blind-spot classes (PDE/topoisomerase/ribosome/XO/cysteine protease)
+remain un-added; see Next tasks.
+
+⚠ **Data bug found:** `run_stp_comparison.py` `_TARGET_CLASS_MAP` uses *different, wrong* ChEMBL IDs
+for the 7 blind-spot classes than `run_benchmark.py` (e.g. DARUNAVIR mislabelled MAO, JDTIC/CYCLORPHAN
+as topoisomerase). The two maps should be unified to a single source of truth before extending further.
 
 ---
 
@@ -322,6 +339,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 | Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
 | Kinase αβunsat warhead | α,β-unsat. carbonyl present | kinase | +0.5 | Covalent Michael acceptor warhead (EGFR) |
 | Kinase sulfonamide-amine | Sulfonamide + TertAmine | kinase | +2.0 | Kinase linker hijacked by CA (Sulfonamide mw=2.0) |
+| MAO warhead | (Propargylamine OR Hydrazine), no Sulfonamide/Nitrile/αβunsat | MAO | +2.5 | Irreversible MAO inhibitor: propargylamine→FAD adduct (selegiline/clorgiline) or hydrazine (phenelzine). Exclusions prevent CA/covalent-kinase false positives. Markers are routing-only (`_WARHEAD_ANNOTATIONS`, not in fg_database → no IDF shift) |
 
 \### Pyrimidine router (`_pyrimidine_router`, utils/target_predictor.py)
 
@@ -369,7 +387,22 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 
 \## Next tasks (prioritised by ROI)
 
-\### Next potential improvements
+\### Blind-spot classes (7 classes with no FG rules) — phased plan
+
+**Tier 1 DONE (2026-06-15):** MAO + COMT added to benchmark (260 cpds, 13 classes).
+- COMT 8/20 (nitrocatechol via existing Phenol+Catechol — already maxed; rest are research series).
+- MAO 2/20 (propargylamine/hydrazine warhead rule). pChEMBL bias caps both; see per-class note.
+
+**Tier 2 (next, if pursued):** topoisomerase (Anthraquinone + quinolone-3-COOH SMARTS),
+xanthine oxidase (Pyrazolopyrimidine already detected + Thiazole-COOH), cysteine protease
+(Nitrile warhead — but collides with kinase, must gate). **Prerequisite: unify the divergent
+ChEMBL target maps** between run_benchmark.py and run_stp_comparison.py (single source of truth)
+and re-download with correct IDs; verify compounds are the right drug class before adding rules.
+
+**Tier 3 (deprioritised):** PDE (too generic + collisions), ribosome (only 3 compounds + hard
+aminoglycosides). Likely structural limits like adenosine/serine protease.
+
+\### Other improvements
 
 1. **SDF / MOL2 input support** (`utils/io_handler.py`) — currently only CSV supported
 2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands

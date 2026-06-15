@@ -140,11 +140,12 @@ Outputs saved to `output/benchmark/`:
 - `curated_summary.csv` / `limit_summary.csv` — per-class Top-1 / Top-3 accuracy + MRR
 - `curated_report.txt` / `limit_report.txt` — plain-text summary (publication-ready)
 
-#### Results (curated benchmark, pChEMBL ≥ 6.0, 11 target classes × 20 compounds = 220)
+#### Results (curated benchmark, pChEMBL ≥ 6.0, 20 compounds per class)
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Curated (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
+| **Core 11 mechanistic classes (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
+| Extended 13 classes (incl. MAO, COMT) | 260 | 76.2% (198/260) | 79.2% (206/260) |
 
 Per-class (curated, 20 compounds each):
 
@@ -161,6 +162,14 @@ Per-class (curated, 20 compounds each):
 | COX | 75% | 85% | Indole+Sulfonamide conditional motif |
 | Adenosine receptor | 60% | 60% | Pyrimidine router (fused-azolo-diazine→adenosine); 8 remain (no purine-mimetic core) |
 | Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
+| COMT | 40% | — | nitrocatechol (entacapone/opicapone) via Phenol+Catechol; other 12 = research analogs |
+| MAO | 10% | — | propargylamine warhead (clorgiline); 18 = research series w/o MAO pharmacophore |
+
+> **pChEMBL-sampling note:** MAO/COMT are sampled as the top-20 highest-affinity ChEMBL
+> compounds, which are modern research analogs largely lacking the classic covalent
+> pharmacophores (propargylamine, nitrocatechol) the marketed drugs carry. The warhead/
+> nitrocatechol rules correctly capture the genuine drugs in the set; the cap reflects the
+> sampling, not a rule gap.
 
 Target classes covered by the benchmark (19 classes):
 

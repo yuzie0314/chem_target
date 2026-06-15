@@ -73,6 +73,7 @@ _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-
 _MTOR_MORPHOLINO_BONUS: float = 2.0         # Morpholine + diazine — ATP-competitive PI3K/mTOR hinge binder
 _ADENOSINE_FUSED_BONUS: float = 2.0         # fused azolo-pyrimidine core — purine-mimetic A2A scaffold
 _KINASE_AMINOPYRIMIDINE_BONUS: float = 2.0  # mono-pyrimidine hinge binder — kinase (quinazoline/aminopyrimidine)
+_MAO_WARHEAD_BONUS: float = 2.5             # propargylamine / hydrazine — irreversible MAO inhibitor warhead
 # Competing pharmacophores that claim a mono-pyrimidine compound for another class
 # (their own FG votes/rules already handle them) — exclude from the kinase branch.
 _PYRIMIDINE_KINASE_EXCLUSIONS: frozenset[str] = frozenset({
@@ -423,6 +424,42 @@ def _pyrimidine_router(fgs_detected: list[str]) -> tuple[str, float, str] | None
     return None
 
 
+def _mao_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for MAO when an irreversible-inhibitor warhead is present.
+
+    Rule: Propargylamine OR Hydrazine present → MAO.
+
+    Rationale:
+        The propargylamine group (N-CH2-C#CH) forms a covalent N5-flavocyanine
+        adduct with the FAD cofactor of monoamine oxidase — the defining warhead
+        of selegiline, rasagiline, pargyline and clorgiline.  Hydrazines /
+        hydrazides (phenelzine, isocarboxazid, iproniazid) are the other classical
+        irreversible MAO-inhibitor chemotype.  Both are mechanistically specific to
+        MAO and rare elsewhere, so a single bonus resolves them cleanly.
+
+        Detection markers come from _WARHEAD_ANNOTATIONS (routing-only; not in
+        fg_database.json → no IDF shift).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to MAO votes and an evidence
+        label.  Returns (0.0, '') if no warhead is present.
+    """
+    fg_set = set(fgs_detected)
+    # Guard against incidental warhead matches in compounds whose true class is
+    # signalled by a stronger pharmacophore:
+    #   • Sulfonamide → carbonic anhydrase (Zn binder)
+    #   • Nitrile / α,β-unsat. carbonyl → covalent kinase warhead context
+    # Genuine MAO propargylamines/hydrazines (selegiline, clorgiline, phenelzine)
+    # carry none of these.
+    if fg_set & {"Sulfonamide", "Nitrile", "α,β-unsat. carbonyl"}:
+        return 0.0, ""
+    if "Propargylamine" in fg_set:
+        return _MAO_WARHEAD_BONUS, "propargylamine MAO warhead"
+    if "Hydrazine" in fg_set:
+        return _MAO_WARHEAD_BONUS, "hydrazine MAO inhibitor"
+    return 0.0, ""
+
+
 def _adenosine_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus for adenosine receptor when Purine scaffold is present.
 
@@ -654,6 +691,12 @@ def predict_target_classes(
     if kin_bonus > 0.0:
         weighted_votes["kinase"] = weighted_votes.get("kinase", 0.0) + kin_bonus
         evidence["kinase"].append(f"[{kin_label}]")
+
+    # MAO covalent-warhead conditional bonus
+    mao_bonus, mao_label = _mao_conditional_bonus(fgs_detected)
+    if mao_bonus > 0.0:
+        weighted_votes["MAO"] = weighted_votes.get("MAO", 0.0) + mao_bonus
+        evidence["MAO"].append(f"[{mao_label}]")
 
     # Adenosine receptor conditional bonus
     ado_bonus, ado_label = _adenosine_conditional_bonus(fgs_detected)

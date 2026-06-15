@@ -218,6 +218,29 @@ _SCAFFOLD_PATTERNS: dict[str, Chem.Mol] = {
 }
 
 
+# ── Routing-only mechanistic warhead markers ─────────────────────────────────
+#
+# Same contract as _SCAFFOLD_ANNOTATIONS (routing-only: not in FG_SMARTS, not in
+# fg_database.json → no BioLiP column, no IDF shift), but these are reactive
+# *warheads* rather than ring scaffolds.  They are consumed by conditional rules
+# in target_predictor.py (currently the MAO rule).
+#   • Propargylamine: N-CH2-C#CH — irreversible MAO inhibitor warhead that forms a
+#     covalent adduct with the FAD cofactor (selegiline, rasagiline, pargyline,
+#     clorgiline).
+#   • Hydrazine: N-N single bond — MAO-inhibitor hydrazine/hydrazide class
+#     (phenelzine, isocarboxazid, iproniazid).
+_WARHEAD_ANNOTATIONS: dict[str, str] = {
+    "Propargylamine": "[CH1]#CC[NX3]",
+    "Hydrazine":      "[NX3;!$(N=*)][NX3;!$(N=*)]",
+}
+
+_WARHEAD_PATTERNS: dict[str, Chem.Mol] = {
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in _WARHEAD_ANNOTATIONS.items()
+    if Chem.MolFromSmarts(smarts) is not None
+}
+
+
 # ── SMARTS-based detection (primary) ─────────────────────────────────────────
 
 def detect_smarts(smiles: str) -> list[str]:
@@ -254,6 +277,11 @@ def detect_smarts(smiles: str) -> list[str]:
 
     # Annotation-only fused-N-heteroaromatic scaffold cores (no scoring impact)
     for name, pattern in _SCAFFOLD_PATTERNS.items():
+        if pattern is not None and mol.GetSubstructMatches(pattern):
+            results.append(name)
+
+    # Routing-only mechanistic warhead markers (consumed by conditional rules)
+    for name, pattern in _WARHEAD_PATTERNS.items():
         if pattern is not None and mol.GetSubstructMatches(pattern):
             results.append(name)
 
