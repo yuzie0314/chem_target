@@ -63,6 +63,14 @@ import requests
 # ── Project root on sys.path ───────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Force UTF-8 console output so unicode glyphs (→, ≥, α) in the report do not
+# crash on legacy Windows code pages (cp950/cp1252).  reconfigure() exists on
+# Python 3.7+ TextIO streams; guard for environments where stdout is redirected
+# to an object without it.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 from utils.target_predictor import predict as _predict
 from utils.metrics import compute_metrics, format_metrics_table, macro_avg, weighted_avg
 
