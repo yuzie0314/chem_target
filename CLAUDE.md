@@ -312,7 +312,7 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 | Rule | Condition | Target | Bonus | Rationale |
 |---|---|---|---|---|
-| CYP450 azole | (Imidazole OR Triazole OR Thiazole) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, **no Pyrimidine**, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole/triazole/thiazole heme-Fe coordination (fluconazole/ritonavir class). Pyrimidine guard: azole paired/fused with a diazine is a purine-mimetic, not a free heme binder (no CYP450 TP has pyrimidine) |
+| CYP450 azole | **free heme azole** (`_has_free_heme_azole`) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole heme-Fe coordination (fluconazole/voriconazole/ketoconazole/ritonavir class). Free azole = Triazole OR Thiazole OR (Imidazole & not Benzimidazole), AND not Fused-azolo-diazine — excludes purine-mimetic fused cores (adenosine/kinase) while keeping voriconazole (free triazole + separate fluoropyrimidine) |
 | CYP450 aryl-COOH A | COOH + Phenyl + Halogen, no Amide, no Ether | cytochrome P450 | +1.5 | Minimal aryl-halide CYP substrate |
 | CYP450 aryl-COOH B | COOH + Amide + Ether + Phenyl + Halogen | cytochrome P450 | +1.5 | Extended aryl-halide CYP substrate |
 | CYP450 ether-amine | Ether + TertAmine + Phenyl + Halogen, no Lactone/Amide/Nitrile | cytochrome P450 | +1.5 | CYP3A4 scaffold (aprepitant-type) |
@@ -334,7 +334,7 @@ Replaces the old standalone morpholino-diazine mTOR rule. Evaluated in order; **
 | 2 | Fused azolo-diazine core (purine-mimetic) | adenosine receptor | +2.0 | 13 compounds = 12 adenosine + 1 mTOR (already-miss). Also suppresses CYP450 (negative constraint) |
 | 3 | mono-Pyrimidine, no Methylsulfone/Hydroxamate/COOH/Aldehyde/Steroid | kinase | +2.0 | kinase-dominant; exclusions protect COX(Methylsulfone)/HDAC(Hydroxamate)/GPCR(COOH/Aldehyde)/NR(Steroid) HITs |
 
-Branch-3 exclusions are competing pharmacophores whose own FG votes/rules already claim the compound. **Caveat (not in benchmark)**: a free triazole antifungal carrying a *separate* fluoropyrimidine (e.g. voriconazole) would be misrouted here instead of CYP450 — acceptable for benchmark scope; revisit if such compounds are added.
+Branch-3 exclusions are competing pharmacophores whose own FG votes/rules already claim the compound. Branch 3 also short-circuits when `_has_free_heme_azole` is true, so a free-triazole antifungal with a *separate* fluoropyrimidine (e.g. **voriconazole**) falls through to the CYP450 azole rule instead of being misrouted to kinase (verified: voriconazole & fluconazole → CYP450; zero benchmark regression).
 
 **Negative constraints** (suppress cytochrome P450 entirely):
 - Hydroxamate or Thiol present → Zn-chelation → HDAC/metalloprotease context

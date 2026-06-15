@@ -160,6 +160,37 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
     return {tc: log(n_fgs / count) for tc, count in tc_count.items()}
 
 
+def _has_free_heme_azole(fg_set: set[str]) -> bool:
+    """True if a free (non-fused, non-benzo) azole ring able to coordinate heme Fe.
+
+    A heme-coordinating azole antifungal (fluconazole/voriconazole/ketoconazole/
+    ritonavir class) carries a *free* azole nitrogen lone pair that ligates the
+    CYP heme iron.  This is the structural opposite of:
+      • a fused azolo-diazine (purine-mimetic: the ring N is locked inside the
+        fused system — adenosine/kinase scaffold, not a heme binder), and
+      • a benzimidazole (the imidazole is benzo-fused; benzimidazole drugs here
+        are kinase inhibitors, not antifungals — their Imidazole match is an
+        artefact of the substructure overlap).
+
+    This is what lets voriconazole (free Triazole + a *separate* fluoropyrimidine)
+    stay CYP450 while a benzimidazole-pyrimidine kinase inhibitor or a fused
+    triazolopyrimidine adenosine ligand does not.
+
+    Args:
+        fg_set: set of detected FG names.
+
+    Returns:
+        True if a free heme-coordinating azole is present.
+    """
+    if "Fused azolo-diazine" in fg_set:
+        return False
+    return (
+        "Triazole" in fg_set
+        or "Thiazole" in fg_set
+        or ("Imidazole" in fg_set and "Benzimidazole" not in fg_set)
+    )
+
+
 def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
 
@@ -186,15 +217,15 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     ketone_hdac_context = "Ketone" in fg_set and (
         "Amide" in fg_set or "Tertiary amine" in fg_set
     )
-    azole_ring = "Imidazole" in fg_set or "Triazole" in fg_set or "Thiazole" in fg_set
+    # Require a FREE heme-coordinating azole.  This both (a) excludes the
+    # purine-mimetic fused azolo-diazine cores (adenosine/kinase) and (b) keeps
+    # voriconazole-class antifungals (free Triazole + a *separate* fluoropyrimidine)
+    # as CYP450, where a blanket "no Pyrimidine" guard would wrongly drop them.
     if (
-        azole_ring
+        _has_free_heme_azole(fg_set)
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
         and not ketone_hdac_context
         and "Purine" not in fg_set
-        and "Pyrimidine" not in fg_set            # azole fused/paired with a diazine is a
-                                                  # purine-mimetic (adenosine/kinase), not a free
-                                                  # heme-coordinating azole; no CYP450 TP has pyrimidine
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
         and "Sulfonamide" not in fg_set           # CA Zn-binding context; triazole-sulfonamide CA inhibitors exist
     ):
@@ -379,8 +410,13 @@ def _pyrimidine_router(fgs_detected: list[str]) -> tuple[str, float, str] | None
                 "fused-azolopyrimidine adenosine motif")
 
     # Branch 3 — mono-pyrimidine hinge binder → kinase, unless a competing
-    # pharmacophore already claims the compound for another class.
-    if not (fg_set & _PYRIMIDINE_KINASE_EXCLUSIONS):
+    # pharmacophore already claims the compound for another class, or a free
+    # heme-coordinating azole marks it as a CYP450 antifungal (voriconazole:
+    # free Triazole + separate fluoropyrimidine — let the CYP450 azole rule win).
+    if (
+        not (fg_set & _PYRIMIDINE_KINASE_EXCLUSIONS)
+        and not _has_free_heme_azole(fg_set)
+    ):
         return ("kinase", _KINASE_AMINOPYRIMIDINE_BONUS,
                 "aminopyrimidine kinase hinge motif")
 
