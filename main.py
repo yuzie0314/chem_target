@@ -169,6 +169,10 @@ def run_predict(args: argparse.Namespace) -> None:
         + [f"res_score_{i}" for i in range(1, _CSV_RESIDUES + 1)]
         + ["warning"]
     )
+    _SHAPE_FIELDS = ["npr1", "npr2", "radius_gyration", "asphericity",
+                     "eccentricity", "spherocity", "inertial_shape_factor", "shape_class"]
+    if args.shape:
+        csv_fieldnames += _SHAPE_FIELDS
 
     csv_fh     = None
     csv_writer = None
@@ -230,7 +234,14 @@ def run_predict(args: argparse.Namespace) -> None:
 
             # CSV summary row
             if csv_writer:
-                csv_writer.writerow(_prediction_to_row(name, smiles, pred))
+                row = _prediction_to_row(name, smiles, pred)
+                if args.shape:
+                    from utils.shape_descriptors import compute_shape, shape_class
+                    sh = compute_shape(smiles)
+                    if sh:
+                        sh["shape_class"] = shape_class(sh["npr1"], sh["npr2"])
+                        row.update(sh)
+                csv_writer.writerow(row)
     finally:
         if csv_fh:
             csv_fh.close()
@@ -308,6 +319,12 @@ def build_parser() -> argparse.ArgumentParser:
     pred_p.add_argument(
         "--top", type=int, default=10,
         help="Top N residues to show per compound (default: 10)",
+    )
+    pred_p.add_argument(
+        "--shape", action="store_true",
+        help="Also compute 3D shape descriptors (NPR1/NPR2, radius of gyration, "
+             "asphericity, ...) and add them to the summary CSV. Off by default "
+             "(needs a 3D conformer per compound).",
     )
     pred_p.add_argument(
         "--output", default=None,

@@ -270,7 +270,7 @@ conda environment name: `chem\_target`
 | FG-confidence tiering + 3D-fallback routing skeleton (stub, zero-regression) | ✅ Done (stub) |
 | 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
 | Input formats: CSV + SDF(RDKit) + MOL2(OpenBabel) + SMI + InChI — `read_file` dispatch, wired in main.py fg/predict | ✅ Done |
-| Shape / physicochemical descriptors | 🔲 Future |
+| 3D shape descriptors (`utils/shape_descriptors.py`: NPR1/NPR2, Rg, asphericity…) — opt-in `predict --shape` | ✅ Done (informational) |
 
 ---
 
@@ -491,7 +491,14 @@ infra is committed, so the ProLIF PoC can resume anytime without blocking other 
 \### Other improvements
 
 1. ~~SDF / MOL2 / SMI / InChI input~~ ✅ DONE (2026-06-16, io_handler.py: RDKit for SDF/SMI/InChI, OpenBabel for MOL2)
-2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
+2. ~~Shape descriptors~~ ✅ DONE (2026-06-16) as an **informational** layer (`utils/shape_descriptors.py`,
+   opt-in `predict --shape` → NPR1/NPR2, Rg, asphericity, eccentricity, spherocity, shape_class).
+   **⚠ The original hypothesis was BACKWARDS** — benchmark medians show **GPCR** ligands are the LARGE,
+   elongated ones (Rg 8.5, asphericity 0.73), while **CYP450** is compact/globular (Rg 4.7, asph 0.36).
+   Shape does carry class signal (GPCR largest; NR/COMT smallest Rg≈3.6; XO/adenosine flat asph≈0.7),
+   but the most shape-separable class (GPCR) is already 100%, so **no shape SCORING rule was added**
+   (would risk the 188 core for no gain). Shape-based help for the misses (e.g. flat XO vs kinase)
+   would need the same gated 3D-fallback treatment as ProLIF — deferred.
 3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
 4. **ProLIF 3D-fallback (PAUSED)** — infra committed; resume needs PDBFixer protein-prep (see 3D-fallback section)
 
