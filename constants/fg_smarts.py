@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 40 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 41 functional groups.
+FG_SMARTS defines 41 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 42 functional groups.
 
 Used by
 -------
@@ -211,6 +211,13 @@ FG_SMARTS: dict[str, str] = {
     "Phenyl ring":              "c1ccccc1",
     "Coumarin":                 "O=c1ccc2ccccc2o1",
     "Chromone":                 "O=c1ccoc2ccccc12",
+    # Anthraquinone (9,10-dioxoanthracene): planar tricyclic quinone. Defining
+    #   DNA-intercalating pharmacophore of the anthracycline topoisomerase-II
+    #   poisons (doxorubicin, daunorubicin, epirubicin, idarubicin) and
+    #   mitoxantrone. The flat polycyclic system stacks between base pairs while
+    #   the drug stabilises the Topo-II–DNA cleavage complex. Specific enough to
+    #   vote (matches only the anthracycline core, not isolated quinones).
+    "Anthraquinone":            "O=C1c2ccccc2C(=O)c2ccccc21",
 
     # ── Halogen & reactive warheads ───────────────────────────────────────────
     "Halogen":                  "[F,Cl,Br,I]",

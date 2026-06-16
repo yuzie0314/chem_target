@@ -38,10 +38,10 @@ based on functional group analysis. Long-term: consultancy tool + SaaS.
 chem_target/
 ├── constants/      # Static lookup tables only. No logic.
 │   ├── fg_names.py     # FG_NAMES: rdkit fr_* → human readable (legacy)
-│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (40 patterns + Steroid Python = 41 total)
+│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (41 patterns + Steroid Python = 42 total)
 ├── db/             # Auto-generated. Never hand-edit.
-│   ├── fg_database.json       # 41 FG metadata: smarts/targets/mechanistic_weight
-│   ├── fg_residue_table.csv   # 40 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json       # 42 FG metadata: smarts/targets/mechanistic_weight
+│   ├── fg_residue_table.csv   # 41 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json  # RCSB CCD SMILES cache
 │   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
@@ -239,19 +239,20 @@ conda environment name: `chem\_target`
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 40 FG SMARTS + Steroid Python = 41 total (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (41 entries incl. Triazole+Thiazole+Benzimidazole+Morpholine+Pyrimidine+Triazine, mechanistic_weight) | ✅ Done |
-| `db/fg_residue_table.csv` (BioLiP rebuild, 40 SMARTS + Steroid columns) | ✅ Done |
+| 41 FG SMARTS + Steroid Python = 42 total (`constants/fg_smarts.py`) | ✅ Done |
+| `db/fg_database.json` (42 entries incl. Triazole+Thiazole+Benzimidazole+Morpholine+Pyrimidine+Triazine+Anthraquinone, mechanistic_weight) | ✅ Done |
+| `db/fg_residue_table.csv` (BioLiP rebuild, 41 SMARTS + Steroid columns) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
 | **Core 11-class Top-1: 188/220 = 85.5%** (mechanistic classes) | ✅ Current best |
 | **Core 11-class Top-3: 196/220 = 89.1%** | ✅ Current best |
-| Blind-spot rule-backed classes: MAO 2/20, COMT 8/20, cysteine protease 12/20 | ✅ |
+| Blind-spot rule-backed: MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20 | ✅ |
 | MAO covalent-warhead rule (Propargylamine/Hydrazine) | ✅ Done |
 | COMT (nitrocatechol via existing Phenol+Catechol) | ✅ 8/20 (pChEMBL-bias limited) |
 | Cysteine protease nitrile-warhead rule (Nitrile+Amide, gated) | ✅ 12/20 (zero collision) |
+| Topoisomerase Anthraquinone voting FG (anthracyclines) | ✅ 5/20 (mw=2.5→topo) |
 | CYP450 conditional motif scoring (azole rule, Thiazole added, Pyrimidine guard) | ✅ Done |
 | Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide + fused-azolo-diazine → suppress CYP450) | ✅ Done |
 | COX indole-sulfonamide motif | ✅ Done |
@@ -287,7 +288,7 @@ conda environment name: `chem\_target`
 | COMT | 8/20 = 40% | — | nitrocatechol (entacapone/opicapone) via existing Phenol+Catechol; other 12 = research series w/o nitrocatechol (pChEMBL-bias) |
 | MAO | 2/20 = 10% | — | propargylamine (clorgiline) via MAO warhead rule; 18 = single research series (Sec/Tert amine, no MAO pharmacophore) |
 | cysteine protease | 12/20 = 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via Nitrile+Amide rule; zero collision. 8 remaining lack nitrile |
-| topoisomerase | 0/20 | — | anthracyclines (doxorubicin etc.) carry Anthraquinone (5/20) — rule NOT yet added (topo has no IDF annotator; needs Anthraquinone FG). 15 = research series |
+| topoisomerase | 5/20 = 25% | — | anthracyclines (doxorubicin/daunorubicin/epirubicin/idarubicin/nemorubicin) via Anthraquinone voting FG (mw=2.5, sole topo annotator → IDF≈3.7). 15 = research series w/o intercalator core |
 | xanthine oxidase | 0/20 | — | pChEMBL-bias: research series (Phenol+Amide+Pyrimidine), no allopurinol/febuxostat pharmacophore; pyrimidine→kinase collision. Structural limit |
 
 **Note on the 13-class extended set (260 compounds):** MAO + COMT were added 2026-06-15 with
@@ -319,6 +320,7 @@ comparison never used them, so it is unaffected.
 | Acylsulfonamide | 2.0 | tubulin | Macrolide warhead |
 | Ketone | 2.0 | HDAC | α-keto warhead in HDAC natural products |
 | Steroid | 2.0 | nuclear receptor (+ subtypes) | Steroidal scaffold → NR |
+| Anthraquinone | 2.5 | topoisomerase | Planar tricyclic quinone DNA-intercalator (anthracyclines/mitoxantrone); sole topo annotator → high IDF |
 | Triazole | 1.5 | cytochrome P450 | Triazole antifungal heme-Fe coordination (fluconazole-class) |
 | Thiazole | 1.5 | cytochrome P450 | Ritonavir-class CYP3A4 inhibitor; thiazole N coordinates heme Fe analogously to imidazole |
 | Benzimidazole | 1.0 | (none — scaffold marker) | Benzene+imidazole fused; Imidazole FG already handles CYP450 voting for benzimidazole compounds |
@@ -407,9 +409,10 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 gitignored). Identities verified via unified map.
 - **cysteine protease DONE: 12/20** — Nitrile+Amide gated rule (`_cysteine_protease_conditional_bonus`),
   zero collision, zero regression on core 11 (188/220). odanacatib/cathepsin-K nitrile-warhead class.
-- **topoisomerase 0/20 — rule pending**: anthracyclines (doxorubicin/daunorubicin) carry Anthraquinone
-  (5/20). Blocker: topo has no fg_database annotator → IDF=1.0; needs Anthraquinone added as a real
-  voting FG (FG_SMARTS + fg_database + table rebuild) or a large bonus. ROI +5.
+- **topoisomerase DONE: 5/20** — Anthraquinone added as a real voting FG (FG_SMARTS + fg_database,
+  mw=2.5, known_target_classes=[topoisomerase]; table rebuilt). As topo's sole annotator its IDF≈3.7,
+  so anthracyclines (doxorubicin etc.) beat the Ketone→HDAC pull. Anthraquinone matches exactly 5
+  benchmark compounds, all topo (zero collision). N 41→42 IDF shift caused zero regression.
 - **xanthine oxidase 0/20 — skip**: pChEMBL-bias, research series (Phenol+Amide+Pyrimidine), no
   allopurinol/febuxostat; pyrimidine→kinase collision. Structural limit.
 

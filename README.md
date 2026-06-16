@@ -16,8 +16,8 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  41 functional groups
-  │  40 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
+  │  FG Detection  (fg_detector.py)     │  42 functional groups
+  │  41 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
   │  azolo-diazine + scaffold cores     │  per molecule
   └─────────────────────────────────────┘
         │
@@ -145,7 +145,7 @@ Outputs saved to `output/benchmark/`:
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
 | **Core 11 mechanistic classes (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
-| + blind-spot rule-backed (MAO, COMT, cysteine protease) | 280 | 75.0% (210/280) | — |
+| + blind-spot rule-backed (MAO, COMT, cysteine protease, topoisomerase) | 300 | 71.7% (215/300) | — |
 
 Per-class (curated, 20 compounds each):
 
@@ -164,6 +164,7 @@ Per-class (curated, 20 compounds each):
 | Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
 | cysteine protease | 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via gated Nitrile+Amide rule |
 | COMT | 40% | — | nitrocatechol (entacapone/opicapone) via Phenol+Catechol; other 12 = research analogs |
+| topoisomerase | 25% | — | anthracycline intercalators (doxorubicin etc.) via Anthraquinone voting FG; 15 = research series |
 | MAO | 10% | — | propargylamine warhead (clorgiline); 18 = research series w/o MAO pharmacophore |
 
 > **pChEMBL-sampling note:** MAO/COMT are sampled as the top-20 highest-affinity ChEMBL

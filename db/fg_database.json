@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-15",
+  "last_updated": "2026-06-16",
   "sources": [
     "chebi",
     "pubchem",
@@ -455,6 +455,17 @@
       "description": "1,3,5-Triazine aromatic ring. Hinge-anchoring heteroarene of the morpholino-triazine PI3K/mTOR class (gedatolisib, PF-04691502). Scaffold marker only; voting via morpholino-diazine conditional rule.",
       "known_target_classes": [],
       "mechanistic_weight": 1.0,
+      "source": "manual"
+    },
+    "Anthraquinone": {
+      "smarts": "O=C1c2ccccc2C(=O)c2ccccc21",
+      "pubchem_cid": 6780,
+      "chebi_id": "CHEBI:40154",
+      "description": "9,10-anthraquinone (planar tricyclic quinone). DNA-intercalating pharmacophore of anthracycline topoisomerase-II poisons (doxorubicin, daunorubicin, epirubicin, idarubicin) and mitoxantrone; stabilises the Topo-II-DNA cleavage complex.",
+      "known_target_classes": [
+        "topoisomerase"
+      ],
+      "mechanistic_weight": 2.5,
       "source": "manual"
     }
   }
