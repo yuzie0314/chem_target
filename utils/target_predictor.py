@@ -49,6 +49,7 @@ import sys
 from collections import Counter, defaultdict
 from math import log
 from pathlib import Path
+from typing import Callable, Optional
 
 import pandas as pd
 
@@ -770,6 +771,91 @@ def predict_target_classes(
     return df
 
 
+# ── FG confidence tiering + 3D-fallback routing ────────────────────────────────
+#
+# The FG layer is high-precision but leaves two failure modes (verified on the
+# benchmark): NO-ANSWER (true class never scored) and FALSE-POSITIVE (true class
+# scored but out-ranked).  A future 3D layer (RDKit shape / ProLIF / Gnina) can
+# help, but only as a *fallback* gated on LOW FG confidence — it must never touch
+# the FG layer's high-confidence calls, which carry the zero-regression core.
+#
+# This is the routing SKELETON: confidence is assessed from observable signal only
+# (no peeking at ground truth), and a pluggable hook is invoked for low-confidence
+# cases.  The default hook is a no-op stub, so predictions are byte-identical to
+# the pure-FG pipeline (zero regression by construction).  Plug a real model via
+# register_fallback_3d().
+
+_CONF_HIGH = "high"
+_CONF_LOW = "low"
+_CONF_NONE = "none"
+
+# Tunable gate thresholds (observable-signal only).
+_CONF_MIN_TOP1_SCORE: float = 3.0   # top-1 IDF-weighted score below this = weak
+_CONF_MIN_MARGIN: float = 0.75      # (top1 − top2) below this = ambiguous tie
+
+
+def assess_confidence(
+    target_class_votes: pd.DataFrame,
+    fgs_detected: list[str],
+) -> str:
+    """Classify FG-layer confidence from observable signal (no ground truth).
+
+    Returns:
+        "none" — no target class scored (empty votes): prime 3D-fallback candidate.
+        "low"  — weak top-1 score OR small top1−top2 margin (ambiguous).
+        "high" — a clear, strong winner: keep the FG call, do NOT override.
+    """
+    if target_class_votes is None or target_class_votes.empty:
+        return _CONF_NONE
+    scores = list(target_class_votes["score"])
+    top1 = float(scores[0])
+    top2 = float(scores[1]) if len(scores) > 1 else 0.0
+    if top1 < _CONF_MIN_TOP1_SCORE or (top1 - top2) < _CONF_MIN_MARGIN:
+        return _CONF_LOW
+    return _CONF_HIGH
+
+
+def _stub_fallback_3d(smiles: str, fg_result: dict) -> Optional[dict]:
+    """Placeholder 3D fallback. Returns None = "no override" (FG result kept).
+
+    The real implementation will go here (or be registered via
+    register_fallback_3d) — RDKit 3D shape/colour retrieval for NO-ANSWER classes,
+    ProLIF interaction-fingerprint matching, and/or Gnina docking rescore for
+    FALSE-POSITIVE re-ranking.  A non-None return must be a dict of result keys to
+    merge (e.g. an augmented/re-ranked ``target_class_votes``).
+    """
+    return None
+
+
+# Pluggable hook. Default = no-op stub → zero behavioural change.
+_FALLBACK_3D: Callable[[str, dict], Optional[dict]] = _stub_fallback_3d
+
+
+def register_fallback_3d(fn: Callable[[str, dict], Optional[dict]]) -> None:
+    """Register a real 3D-fallback model. Pass _stub_fallback_3d to reset."""
+    global _FALLBACK_3D
+    _FALLBACK_3D = fn
+
+
+def _finalize_with_fallback(result: dict, smiles: str) -> dict:
+    """Tag confidence and route low-confidence predictions to the 3D fallback.
+
+    Zero-regression invariant: the fallback is consulted only for low/none
+    confidence, and only an explicit non-None return overrides the FG result.
+    The default stub returns None, so output is unchanged.
+    """
+    result["confidence"] = assess_confidence(
+        result.get("target_class_votes"), result.get("fgs_detected", [])
+    )
+    result["fallback_applied"] = False
+    if result["confidence"] in (_CONF_LOW, _CONF_NONE):
+        override = _FALLBACK_3D(smiles, result)
+        if override is not None:
+            result.update(override)
+            result["fallback_applied"] = True
+    return result
+
+
 # ── Main prediction pipeline ───────────────────────────────────────────────────
 
 def predict(
@@ -813,7 +899,8 @@ def predict(
             f"No SMARTS-matched functional groups detected in: {smiles}\n"
             "  Check that the SMILES is valid and that FG_SMARTS covers the scaffold."
         )
-        return result
+        # No FGs = the strongest NO-ANSWER signal — route to the 3D fallback.
+        return _finalize_with_fallback(result, smiles)
     result["fgs_detected"] = fgs
 
     # 2. Load FG × residue table
@@ -835,7 +922,8 @@ def predict(
         fgs, fg_db, use_idf=use_idf
     )
 
-    return result
+    # 5. Confidence tiering + (gated) 3D-fallback routing — no-op stub by default
+    return _finalize_with_fallback(result, smiles)
 
 
 # ── Report formatter ───────────────────────────────────────────────────────────

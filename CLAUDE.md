@@ -264,6 +264,7 @@ conda environment name: `chem\_target`
 | Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
 | Morpholine + Pyrimidine + Triazine SMARTS (scaffold markers, no target votes) | ✅ Done |
 | `_detect_fused_azolo_diazine` Python detector (routing-only, not in fg_database → no IDF impact) | ✅ Done |
+| FG-confidence tiering + 3D-fallback routing skeleton (stub, zero-regression) | ✅ Done (stub) |
 | 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
 | SDF / MOL2 input support | 🔲 Pending |
 | Shape / physicochemical descriptors | 🔲 Future |
@@ -418,6 +419,24 @@ gitignored). Identities verified via unified map.
 
 **Tier 3 (deprioritised):** PDE (too generic + collisions), ribosome (only 3 compounds + hard
 aminoglycosides). Likely structural limits like adenosine/serine protease.
+
+\### 3D-fallback layer (skeleton DONE, real models pending)
+
+`utils/target_predictor.py`: `assess_confidence()` + `register_fallback_3d()` +
+`_finalize_with_fallback()`. Predictions get a `confidence` tag (high/low/none) from
+observable signal only (top1 score < 3.0 OR top1−top2 margin < 0.75 → low; empty votes → none).
+Low/none route to a pluggable 3D hook; default `_stub_fallback_3d` returns None → **zero
+regression** (verified: core 11 stays 188/220). Plug real models via `register_fallback_3d`.
+
+**Gate-selectivity finding (320-cpd benchmark)** — the confidence gate is SAFE but PARTIAL:
+- Routes 42/105 misses (40%); also flags 41/215 hits (would be at risk only if a real model overrides).
+- **63/105 misses are HIGH confidence (FG confidently wrong) → NOT reachable by the gate**:
+  NO-ANSWER 39 (e.g. XO→kinase via pyrimidine), FALSE-POS 24 (e.g. COMT loses to CA/NR at score 6+).
+- Implication: a confidence gate alone cannot trigger the FALSE-POSITIVE re-rank cases (the wrong
+  winner is *strong*). Reaching the 63 confident-wrong misses needs a parallel 3D path + meta-reconciler
+  that may override high-confidence FG calls — which carries regression risk and must be validated hard.
+  Method map (from failure-mode analysis): shape/ProLIF = retrieval for NO-ANSWER; Gnina rescore =
+  re-rank for FALSE-POS (but needs an always-on or top-K trigger, not the confidence gate).
 
 \### Other improvements
 
