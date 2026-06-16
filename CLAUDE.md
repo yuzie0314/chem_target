@@ -46,7 +46,8 @@ chem_target/
 │   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
 │   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core(), _detect_fused_azolo_diazine()
-│   ├── target_predictor.py    # IDF × mw scoring + conditional rules + _pyrimidine_router()
+│   ├── target_predictor.py    # IDF × mw scoring + conditional rules + _pyrimidine_router() + confidence gate / register_fallback_3d
+│   ├── fallback_3d.py         # 3D-fallback interface (Fallback3D, ProLIFFallback stub, build_override) — lazy heavy deps
 │   ├── interaction_analyzer.py  # BioLiP → fg_residue_table.csv
 │   ├── pose_extractor.py      # 3D pose extractor → residue_3d_poses.json
 │   ├── db_updater.py          # PubChem/ChEMBL → fg_database.json
@@ -437,6 +438,15 @@ regression** (verified: core 11 stays 188/220). Plug real models via `register_f
   that may override high-confidence FG calls — which carries regression risk and must be validated hard.
   Method map (from failure-mode analysis): shape/ProLIF = retrieval for NO-ANSWER; Gnina rescore =
   re-rank for FALSE-POS (but needs an always-on or top-K trigger, not the confidence gate).
+
+**ProLIF interface stub DONE (`utils/fallback_3d.py`)**: `Fallback3D` base + `ProLIFFallback`
+(stubbed 5-step pipeline: embed→dock→ProLIF IFP→ref-Tanimoto→propose; `propose()` returns None →
+zero regression, verified 0/320 top1 change when registered) + `build_override()` (the re-rank/merge
+contract — IMPLEMENTED & tested: a proposal re-ranks above weak FG votes with a `[3D:ProLIF]` tag).
+Reference-IFP library contract documented (db/prolif_reference_ifp.json, gitignored). Heavy deps
+(ProLIF/docking) lazy-imported so the FG core never pulls them. **Option-1 PoC next**: build the
+serine-protease reference IFP library + docking, then fill `_embed_3d/_dock/_compute_ifp/_match_reference`.
+Regression surface for Option 1 = the 41 low-confidence HITS (must not be broken by overrides).
 
 \### Other improvements
 
