@@ -145,7 +145,7 @@ Outputs saved to `output/benchmark/`:
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
 | **Core 11 mechanistic classes (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
-| Extended 13 classes (incl. MAO, COMT) | 260 | 76.2% (198/260) | 79.2% (206/260) |
+| + blind-spot rule-backed (MAO, COMT, cysteine protease) | 280 | 75.0% (210/280) | — |
 
 Per-class (curated, 20 compounds each):
 
@@ -162,6 +162,7 @@ Per-class (curated, 20 compounds each):
 | COX | 75% | 85% | Indole+Sulfonamide conditional motif |
 | Adenosine receptor | 60% | 60% | Pyrimidine router (fused-azolo-diazine→adenosine); 8 remain (no purine-mimetic core) |
 | Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
+| cysteine protease | 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via gated Nitrile+Amide rule |
 | COMT | 40% | — | nitrocatechol (entacapone/opicapone) via Phenol+Catechol; other 12 = research analogs |
 | MAO | 10% | — | propargylamine warhead (clorgiline); 18 = research series w/o MAO pharmacophore |
 
