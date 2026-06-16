@@ -159,13 +159,15 @@ Currently supported (`utils/io_handler.read_file` auto-dispatches by extension):
 \- CSV: col1 = compound name, col2 = SMILES (`read_csv`)
 \- SDF/.sd: **RDKit `SDMolSupplier`** (native/robust); name from `--name-property` tag → title (`_Name`) → `mol_<i>`; SMILES via RDKit (`read_sdf`)
 \- MOL2/.mol: **OpenBabel (pybel)** via `read_mol2`; RDKit's MOL2 reader is weak
+\- SMI/.smiles: whitespace-delimited `<SMILES> [name]` per line; header + invalid lines skipped (`read_smiles_file`)
+\- InChI/.ich: `InChI=… [name]` per line → RDKit `MolFromInchi` (`read_inchi_file`)
 
 NOTE on OpenBabel: conda's OpenBabel format plugins do NOT load on Windows without a DLL/PATH fix —
 `io_handler._setup_openbabel()` (and the same helper in `build_prolif_reference.py`) sets
-`BABEL_LIBDIR`/`BABEL_DATADIR` + `os.add_dll_directory` from `sys.prefix`. SDF deliberately uses RDKit
-(not OpenBabel) to avoid this fragility for the common case.
+`BABEL_LIBDIR`/`BABEL_DATADIR` + `os.add_dll_directory` from `sys.prefix`. SDF/SMILES/InChI deliberately
+use RDKit (not OpenBabel) to avoid this fragility; OpenBabel is used only for MOL2.
 
-Planned (extend io\_handler.py): InChI strings, plain SMILES files
+Planned (extend io\_handler.py): InChIKey lookup (needs external resolver — not structural)
 
 
 
@@ -267,7 +269,7 @@ conda environment name: `chem\_target`
 | `_detect_fused_azolo_diazine` Python detector (routing-only, not in fg_database → no IDF impact) | ✅ Done |
 | FG-confidence tiering + 3D-fallback routing skeleton (stub, zero-regression) | ✅ Done (stub) |
 | 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
-| SDF (RDKit) + MOL2 (OpenBabel) input support — `read_file` dispatch, wired in main.py fg/predict | ✅ Done |
+| Input formats: CSV + SDF(RDKit) + MOL2(OpenBabel) + SMI + InChI — `read_file` dispatch, wired in main.py fg/predict | ✅ Done |
 | Shape / physicochemical descriptors | 🔲 Future |
 
 ---
@@ -488,11 +490,10 @@ infra is committed, so the ProLIF PoC can resume anytime without blocking other 
 
 \### Other improvements
 
-1. ~~SDF / MOL2 input support~~ ✅ DONE (2026-06-16, RDKit SDF + OpenBabel MOL2 in io_handler.py)
-2. **InChI / plain-SMILES file input** — remaining io_handler formats
-3. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
-4. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
-5. **ProLIF 3D-fallback (PAUSED)** — infra committed; resume needs PDBFixer protein-prep (see 3D-fallback section)
+1. ~~SDF / MOL2 / SMI / InChI input~~ ✅ DONE (2026-06-16, io_handler.py: RDKit for SDF/SMI/InChI, OpenBabel for MOL2)
+2. **Shape descriptors** (PMI, radius of gyration) — would help distinguish CYP450 elongated ligands from compact GPCR ligands
+3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
+4. **ProLIF 3D-fallback (PAUSED)** — infra committed; resume needs PDBFixer protein-prep (see 3D-fallback section)
 
 \### ✅ 方案 4 (DONE — detection complete; no further scoring ROI on this benchmark)
 

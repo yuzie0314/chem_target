@@ -1,9 +1,11 @@
 """Input file reading utilities → {compound_name: smiles}.
 
 Supported formats:
-    CSV   — col 0 = compound name, col 1 = SMILES
-    SDF   — RDKit SDMolSupplier; name from property/title; SMILES via RDKit
-    MOL2  — OpenBabel (pybel); name from title; SMILES via OpenBabel
+    CSV          — col 0 = compound name, col 1 = SMILES
+    SDF          — RDKit SDMolSupplier; name from property/title; SMILES via RDKit
+    MOL2         — OpenBabel (pybel); name from title; SMILES via OpenBabel
+    SMI/SMILES   — whitespace-delimited "<SMILES> [name]" per line
+    InChI        — "InChI=... [name]" per line; converted via RDKit MolFromInchi
 
 Format choice
 -------------
@@ -13,7 +15,6 @@ not load on Windows without a DLL/PATH fix (see ``_setup_openbabel``), so RDKit 
 the reliable path for the common SDF case.  OpenBabel is reserved for MOL2, where
 RDKit's reader is weaker; ``_setup_openbabel`` makes its plugins discoverable.
 
-Planned: InChI strings, plain SMILES files.
 """
 
 import os
@@ -146,6 +147,65 @@ def read_mol2(filepath: str) -> dict[str, str]:
     return compounds
 
 
+# ── Plain SMILES file (.smi / .smiles) ──────────────────────────────────────────
+
+def read_smiles_file(filepath: str) -> dict[str, str]:
+    """Read a whitespace-delimited SMILES file → {compound_name: smiles}.
+
+    Each non-blank line: ``<SMILES> [name…]`` (the standard .smi convention).
+    A leading header line (first token "smiles"/"smi") is skipped. Lines whose
+    first token is not a valid SMILES are skipped with a warning. Missing names
+    fall back to ``mol_<i>``; duplicates get a numeric suffix.
+    """
+    compounds: dict[str, str] = {}
+    seen: dict[str, int] = {}
+    with open(filepath, encoding="utf-8") as fh:
+        for idx, line in enumerate(fh, start=1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tokens = line.split()
+            smi = tokens[0]
+            if idx == 1 and smi.lower() in {"smiles", "smi"}:
+                continue   # header row
+            if Chem.MolFromSmiles(smi) is None:
+                print(f"  ! [line {idx}] invalid SMILES '{smi[:60]}' — skipped")
+                continue
+            name = " ".join(tokens[1:]).strip() or f"mol_{idx}"
+            compounds[_dedup(name, seen)] = smi
+    return compounds
+
+
+# ── InChI file (.inchi) ──────────────────────────────────────────────────────────
+
+def read_inchi_file(filepath: str) -> dict[str, str]:
+    """Read a file of InChI strings → {compound_name: smiles}.
+
+    Each non-blank line: ``InChI=... [name…]`` (InChI strings contain no spaces,
+    so the first whitespace token is the InChI, the rest is the name). Converted
+    to canonical SMILES via RDKit. Missing names fall back to ``mol_<i>``.
+    """
+    compounds: dict[str, str] = {}
+    seen: dict[str, int] = {}
+    with open(filepath, encoding="utf-8") as fh:
+        for idx, line in enumerate(fh, start=1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tokens = line.split()
+            inchi = tokens[0]
+            if not inchi.startswith("InChI="):
+                print(f"  ! [line {idx}] not an InChI string — skipped")
+                continue
+            mol = Chem.MolFromInchi(inchi)
+            if mol is None:
+                print(f"  ! [line {idx}] RDKit could not parse InChI — skipped")
+                continue
+            name = " ".join(tokens[1:]).strip() or f"mol_{idx}"
+            compounds[_dedup(name, seen)] = Chem.MolToSmiles(mol)
+    return compounds
+
+
 # ── Auto-dispatch ─────────────────────────────────────────────────────────────
 
 def read_file(filepath: str, name_property: str | None = None) -> dict[str, str]:
@@ -164,6 +224,11 @@ def read_file(filepath: str, name_property: str | None = None) -> dict[str, str]
         return read_sdf(filepath, name_property=name_property)
     if ext in {".mol2", ".mol"}:
         return read_mol2(filepath)
+    if ext in {".smi", ".smiles"}:
+        return read_smiles_file(filepath)
+    if ext in {".inchi", ".ich"}:
+        return read_inchi_file(filepath)
     raise ValueError(
-        f"Unsupported file format: '{ext}'. Supported: .csv, .sdf, .sd, .mol2, .mol"
+        f"Unsupported file format: '{ext}'. "
+        "Supported: .csv, .sdf, .sd, .mol2, .mol, .smi, .smiles, .inchi"
     )
