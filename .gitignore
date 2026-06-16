@@ -20,6 +20,11 @@ fg_abundance_table.csv
 db/*.gz
 db/*.txt
 
+# ProLIF 3D-fallback artifacts — regenerate via utils/build_prolif_reference.py
+# (need optional heavy deps: ProLIF + MDAnalysis + a docking backend)
+db/prolif_pdb/
+db/prolif_reference_ifp.json
+
 # Data files — keep test SDF, ignore large user uploads
 data/*.mol2
 data/*.sdf

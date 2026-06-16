@@ -48,6 +48,7 @@ chem_target/
 │   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core(), _detect_fused_azolo_diazine()
 │   ├── target_predictor.py    # IDF × mw scoring + conditional rules + _pyrimidine_router() + confidence gate / register_fallback_3d
 │   ├── fallback_3d.py         # 3D-fallback interface (Fallback3D, ProLIFFallback stub, build_override) — lazy heavy deps
+│   ├── build_prolif_reference.py  # env check + ProLIF reference-IFP builder (check|build) → db/prolif_reference_ifp.json
 │   ├── interaction_analyzer.py  # BioLiP → fg_residue_table.csv
 │   ├── pose_extractor.py      # 3D pose extractor → residue_3d_poses.json
 │   ├── db_updater.py          # PubChem/ChEMBL → fg_database.json
@@ -447,6 +448,14 @@ Reference-IFP library contract documented (db/prolif_reference_ifp.json, gitigno
 (ProLIF/docking) lazy-imported so the FG core never pulls them. **Option-1 PoC next**: build the
 serine-protease reference IFP library + docking, then fill `_embed_3d/_dock/_compute_ifp/_match_reference`.
 Regression surface for Option 1 = the 41 low-confidence HITS (must not be broken by overrides).
+
+**Reference-library builder DONE (`utils/build_prolif_reference.py check|build`)**: builds
+db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP, no docking on the
+reference side; docking only at query time). Seed set = serine-protease complexes (trypsin 3PTB+BEN,
+thrombin 1OYT/1DWD, factor Xa 2ZFF/1F0R — expand with more non-benzamidine peptidomimetics). Heavy
+deps lazy; `check` runs anywhere. **Env status (2026-06-16): rdkit ✓, requests ✓; ProLIF + MDAnalysis
+MISSING (build-time, `pip install prolif MDAnalysis`); no docking backend (query-time only, e.g.
+`conda install -c conda-forge smina`).** db/prolif_pdb/ + db/prolif_reference_ifp.json are gitignored.
 
 \### Other improvements
 
