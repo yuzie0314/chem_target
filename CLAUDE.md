@@ -455,9 +455,22 @@ for Option 1 = the 41 low-confidence HITS (overrides must not break them).
 db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP, no docking on the
 reference side; docking only at query time). Seed set = serine-protease complexes (trypsin 3PTB+BEN,
 thrombin 1OYT/1DWD, factor Xa 2ZFF/1F0R — expand with more non-benzamidine peptidomimetics). Heavy
-deps lazy; `check` runs anywhere. **Env status (2026-06-16): rdkit ✓, requests ✓; ProLIF + MDAnalysis
-MISSING (build-time, `pip install prolif MDAnalysis`); no docking backend (query-time only, e.g.
-`conda install -c conda-forge smina`).** db/prolif_pdb/ + db/prolif_reference_ifp.json are gitignored.
+deps lazy; `check` runs anywhere. **Env status (2026-06-16): chem_target has rdkit + ProLIF 2.1.0 +
+MDAnalysis 2.9.0 + requests ✓ (build-ready); no docking backend yet (query-time, `conda install -c
+conda-forge smina`).** NOTE: the user's interactive shell can't `conda activate` (run via the full
+path `C:\Users\User\miniconda3\envs\chem_target\python.exe`). db/prolif_pdb/ + db/prolif_reference_ifp.json
+gitignored.
+
+**⛔ Build blocker (protein prep) — reference library NOT yet built (2026-06-16):** the builder now
+auto-fixes conda OpenBabel's plugin path (`_setup_openbabel`: BABEL_LIBDIR/DATADIR + add_dll_directory
+from sys.prefix), protonates ligand + protein, and sources them separately (OpenBabel drops HETATM
+resnames). BUT OpenBabel mangles **protein** chain/residue topology → ProLIF raises
+`KeyError: ResidueId(...)` in `Fingerprint.generate`. **Fix: prepare the protein with a
+topology-preserving tool (PDBFixer/openmm or `reduce`), not OpenBabel** — `conda install -c conda-forge
+pdbfixer openmm`, then swap the protein branch of `_ifp_from_complex` to a PDBFixer addMissingHydrogens
+pass (keep OpenBabel only for the ligand). Decision pending: this is real structural-prep yak-shaving
+for a ~7-compound (serine-protease) payoff; the FG core (188/220) is unaffected and all 3D-fallback
+infra is committed, so the ProLIF PoC can resume anytime without blocking other work.
 
 **3D-fallback tune list (once installed + library built):**
 - **Receptor prep**: `_dock` currently feeds smina a raw PDB receptor (no PDBQT prep). Fine for a PoC,
