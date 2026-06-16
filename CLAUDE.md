@@ -440,14 +440,16 @@ regression** (verified: core 11 stays 188/220). Plug real models via `register_f
   Method map (from failure-mode analysis): shape/ProLIF = retrieval for NO-ANSWER; Gnina rescore =
   re-rank for FALSE-POS (but needs an always-on or top-K trigger, not the confidence gate).
 
-**ProLIF interface stub DONE (`utils/fallback_3d.py`)**: `Fallback3D` base + `ProLIFFallback`
-(stubbed 5-step pipeline: embed→dock→ProLIF IFP→ref-Tanimoto→propose; `propose()` returns None →
-zero regression, verified 0/320 top1 change when registered) + `build_override()` (the re-rank/merge
-contract — IMPLEMENTED & tested: a proposal re-ranks above weak FG votes with a `[3D:ProLIF]` tag).
-Reference-IFP library contract documented (db/prolif_reference_ifp.json, gitignored). Heavy deps
-(ProLIF/docking) lazy-imported so the FG core never pulls them. **Option-1 PoC next**: build the
-serine-protease reference IFP library + docking, then fill `_embed_3d/_dock/_compute_ifp/_match_reference`.
-Regression surface for Option 1 = the 41 low-confidence HITS (must not be broken by overrides).
+**ProLIF fallback IMPLEMENTED (`utils/fallback_3d.py`)**: `Fallback3D` base + `ProLIFFallback` with the
+full 4-step pipeline written: `_embed_3d` (RDKit ETKDGv3+MMFF) → `_dock` (smina subprocess,
+`--autobox_ligand` on the reference co-crystal ligand) → `_compute_ifp` (ProLIF Fingerprint vs receptor)
+→ `_match_reference` (Jaccard on interaction-key sets). `build_override()` re-rank/merge contract tested.
+**IFP representation = set of "PROTRES.Interaction" keys** (e.g. ASP189.HBDonor) shared by builder and
+fallback — NOT raw bitvectors (those aren't aligned across molecules); Tanimoto = Jaccard on key-sets.
+`propose()` swallows all errors → None, and short-circuits when no reference library exists, so it stays
+**zero-regression** until a library is built (verified 0/320 top1 change registered). Heavy deps
+(ProLIF/MDAnalysis/docking) lazy-imported. **Runs once installed + reference built.** Regression surface
+for Option 1 = the 41 low-confidence HITS (overrides must not break them).
 
 **Reference-library builder DONE (`utils/build_prolif_reference.py check|build`)**: builds
 db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP, no docking on the

@@ -143,12 +143,15 @@ def _fetch_pdb(pdb_id: str) -> Path | None:
 # ── IFP from a crystal complex ──────────────────────────────────────────────────
 
 def _ifp_from_complex(pdb_path: Path, ligand_resname: str):
-    """Compute a ProLIF interaction fingerprint for one PDB protein-ligand complex.
+    """Compute the ProLIF interaction-key set for one PDB protein-ligand complex.
 
-    Returns (ifp_hex, n_bits) or (None, 0) on failure. Lazy-imports the heavy stack.
+    Returns (ifp_keys: list[str], n_keys) or (None, 0) on failure. Uses the same
+    'PROTRES.Interaction' key representation as utils.fallback_3d so the build and
+    the query side are directly comparable (Tanimoto/Jaccard). Lazy heavy imports.
     """
     import MDAnalysis as mda          # lazy
     import prolif as plf              # lazy
+    from utils.fallback_3d import ifp_keys_from_fingerprint
 
     u = mda.Universe(str(pdb_path))
     lig_sel = u.select_atoms(f"resname {ligand_resname}")
@@ -161,12 +164,8 @@ def _ifp_from_complex(pdb_path: Path, ligand_resname: str):
     prot = plf.Molecule.from_mda(prot_sel)
     fp = plf.Fingerprint()
     fp.run_from_iterable([lig], prot, progress=False)
-    bvs = fp.to_bitvectors()          # list[ExplicitBitVect], one per ligand frame
-    if not bvs:
-        return None, 0
-    from rdkit.DataStructs import BitVectToText  # lazy
-    bv = bvs[0]
-    return bv.ToBase64() if hasattr(bv, "ToBase64") else BitVectToText(bv), bv.GetNumBits()
+    keys = ifp_keys_from_fingerprint(fp)
+    return (keys, len(keys)) if keys else (None, 0)
 
 
 # ── Build ────────────────────────────────────────────────────────────────────────
@@ -192,17 +191,20 @@ def build_reference(target_class: str, out_path: Path = _OUT_PATH) -> None:
         pdb_path = _fetch_pdb(c["pdb"])
         if pdb_path is None:
             continue
-        ifp_hex, n_bits = _ifp_from_complex(pdb_path, c["ligand_resname"])
-        if ifp_hex is None:
+        ifp_keys, n_keys = _ifp_from_complex(pdb_path, c["ligand_resname"])
+        if ifp_keys is None:
             continue
         actives.append({
             "source_pdb": c["pdb"],
             "ligand_resname": c["ligand_resname"],
             "note": c.get("note", ""),
-            "ifp_hex": ifp_hex,
-            "n_bits": n_bits,
+            "ifp_keys": ifp_keys,
+            "n_keys": n_keys,
         })
-        print(f"    [ok] {c['pdb']} ({c['ligand_resname']}): {n_bits}-bit IFP")
+        print(f"    [ok] {c['pdb']} ({c['ligand_resname']}): {n_keys} interaction keys")
+
+    # Docking receptor for query-time: use the first complex (real binding site).
+    first = spec["complexes"][0]
 
     # Merge into existing library (preserve other target classes)
     library = {}
@@ -210,6 +212,8 @@ def build_reference(target_class: str, out_path: Path = _OUT_PATH) -> None:
         library = json.loads(out_path.read_text(encoding="utf-8"))
     library[target_class] = {
         "binding_site_residues": spec["binding_site_residues"],
+        "docking": {"receptor_pdb": first["pdb"],
+                    "autobox_ligand_resname": first["ligand_resname"]},
         "actives": actives,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

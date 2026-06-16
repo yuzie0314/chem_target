@@ -32,11 +32,11 @@ Reference IFP library data contract (per supported target class)
 JSON at ``db/prolif_reference_ifp.json`` (gitignored — rebuild offline):
     {
       "serine protease": {
-        "target_pdb": "1OYT",                 # protein used for docking
         "binding_site_residues": ["ASP189", "SER195", "GLY216", ...],
+        "docking": {"receptor_pdb": "3PTB", "autobox_ligand_resname": "BEN"},
         "actives": [
-          {"chembl_id": "...", "smiles": "...",
-           "ifp_hex": "<ProLIF bitvector as hex>", "source_pdb": "..."},
+          {"source_pdb": "3PTB", "ligand_resname": "BEN", "note": "...",
+           "ifp_keys": ["ASP189.HBDonor", "SER195.HBAcceptor", ...]},
           ...
         ]
       },
@@ -46,6 +46,7 @@ JSON at ``db/prolif_reference_ifp.json`` (gitignored — rebuild offline):
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -54,6 +55,35 @@ import pandas as pd
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_REF_IFP = _ROOT / "db" / "prolif_reference_ifp.json"
+_PDB_DIR = _ROOT / "db" / "prolif_pdb"   # cached PDBs (shared with build script)
+
+
+# ── IFP representation (shared by builder and fallback) ─────────────────────────
+# An interaction fingerprint is stored as a SET of "PROTRES.Interaction" keys
+# (e.g. "ASP189.HBDonor", "SER195.HBAcceptor") rather than a raw bitvector,
+# because ProLIF's bit indexing is not aligned across molecules/runs.  Key-sets
+# give a stable, human-readable space and an unambiguous Tanimoto (Jaccard).
+
+def ifp_keys_from_fingerprint(fp) -> list[str]:
+    """Extract sorted ['PROTRES.Interaction', ...] keys from a run ProLIF Fingerprint.
+
+    Version-tolerant: reads the to_dataframe() MultiIndex columns and keeps the
+    protein-residue + interaction levels of every detected (truthy) interaction.
+    """
+    df = fp.to_dataframe()
+    keys: set[str] = set()
+    for col in df.columns:
+        col_t = col if isinstance(col, tuple) else (col,)
+        if len(col_t) < 2:
+            continue
+        prot_res, interaction = str(col_t[-2]), str(col_t[-1])
+        try:
+            on = bool(df[col].to_numpy().any())
+        except Exception:  # noqa: BLE001
+            on = True
+        if on:
+            keys.add(f"{prot_res}.{interaction}")
+    return sorted(keys)
 
 
 # ── Proposal + merge contract (shared by all 3D fallbacks) ──────────────────────
@@ -169,19 +199,34 @@ class ProLIFFallback(Fallback3D):
 
     # ── public proposal entry point ─────────────────────────────────────────
     def propose(self, smiles: str, fg_result: dict) -> Optional[FallbackProposal]:
-        """STUB: returns None (no override). Real flow outlined below."""
-        # Scope guard: only attempt classes we hold a reference library for.
-        # (The confidence gate in target_predictor already restricts to low/none.)
-        # ---- real pipeline (to implement) ----
-        # mol  = self._embed_3d(smiles)
-        # for cls in self.supported_classes:
-        #     pose          = self._dock(mol, cls)
-        #     ifp           = self._compute_ifp(pose, cls)
-        #     sim, ref      = self._match_reference(ifp, cls)
-        #     if sim >= self.sim_threshold:
-        #         score = self._sim_to_score(sim)
-        #         return FallbackProposal(cls, score, self.name,
-        #                                 {"ifp_tanimoto": sim, "ref": ref})
+        """Embed → dock → IFP → reference-match → propose (or None).
+
+        Any failure (missing deps, docking error, no reference) is swallowed and
+        returns None, so the FG result is kept verbatim — the zero-regression
+        invariant holds even if this is registered without ProLIF/docking present.
+        """
+        try:
+            classes = [c for c in self.supported_classes if self._has_reference(c)]
+            if not classes:
+                return None            # no reference library yet → nothing to match
+            mol = self._embed_3d(smiles)
+            if mol is None:
+                return None
+            for cls in classes:
+                pose = self._dock(mol, cls)
+                if pose is None:
+                    continue
+                ifp = self._compute_ifp(pose, cls)
+                if not ifp:
+                    continue
+                sim, ref = self._match_reference(ifp, cls)
+                if sim >= self.sim_threshold:
+                    return FallbackProposal(
+                        cls, self._sim_to_score(sim), self.name,
+                        {"ifp_tanimoto": round(sim, 3), "ref_pdb": ref},
+                    )
+        except Exception:  # noqa: BLE001 — fallback must never break predict()
+            return None
         return None
 
     # ── reference library ────────────────────────────────────────────────────
@@ -197,22 +242,101 @@ class ProLIFFallback(Fallback3D):
                 )
         return self._ref
 
-    # ── pipeline steps (STUBS — lazy heavy imports go inside) ─────────────────
+    def _has_reference(self, target_class: str) -> bool:
+        return bool(self._load_reference().get(target_class, {}).get("actives"))
+
+    # ── pipeline steps (lazy heavy imports inside each) ───────────────────────
     def _embed_3d(self, smiles: str):
-        """RDKit ETKDGv3 + MMFF 3D conformer. (to implement)"""
-        raise NotImplementedError("ProLIF 3D embedding not yet implemented")
+        """SMILES → 3D conformer (RDKit ETKDGv3 + MMFF, explicit H)."""
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return None
+        mol = Chem.AddHs(mol)
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 0xC0FFEE
+        if AllChem.EmbedMolecule(mol, params) != 0:
+            params.useRandomCoords = True
+            if AllChem.EmbedMolecule(mol, params) != 0:
+                return None
+        try:
+            AllChem.MMFFOptimizeMolecule(mol)
+        except Exception:  # noqa: BLE001 — keep the embedded (un-minimised) pose
+            pass
+        return mol
+
+    def _prep_receptor(self, target_class: str) -> tuple[Optional[Path], Optional[Path]]:
+        """Split the cached reference PDB into receptor + autobox-ligand files."""
+        dock = self._load_reference().get(target_class, {}).get("docking", {})
+        pdb_id = dock.get("receptor_pdb")
+        lig_res = dock.get("autobox_ligand_resname")
+        if not pdb_id or not lig_res:
+            return None, None
+        pdb_path = _PDB_DIR / f"{pdb_id}.pdb"
+        if not pdb_path.exists():
+            return None, None
+        rec = _PDB_DIR / f"{pdb_id}_receptor.pdb"
+        box = _PDB_DIR / f"{pdb_id}_{lig_res}_box.pdb"
+        if not (rec.exists() and box.exists()):
+            import MDAnalysis as mda
+            u = mda.Universe(str(pdb_path))
+            u.select_atoms("protein").write(str(rec))
+            u.select_atoms(f"resname {lig_res}").write(str(box))
+        return rec, box
 
     def _dock(self, mol, target_class: str):
-        """Dock into the class's reference protein via self.docking_backend."""
-        raise NotImplementedError("ProLIF docking backend not yet implemented")
+        """Dock the query into the class's reference receptor → best-pose RDKit mol."""
+        import subprocess
+        import tempfile
+        from rdkit import Chem
+        rec, box = self._prep_receptor(target_class)
+        if rec is None:
+            return None
+        backend = (shutil.which(self.docking_backend)
+                   or shutil.which("smina") or shutil.which("gnina"))
+        if backend is None:
+            return None
+        with tempfile.TemporaryDirectory() as td:
+            lig_in = Path(td) / "lig.sdf"
+            out = Path(td) / "out.sdf"
+            w = Chem.SDWriter(str(lig_in)); w.write(mol); w.close()
+            cmd = [backend, "--receptor", str(rec), "--ligand", str(lig_in),
+                   "--autobox_ligand", str(box), "--autobox_add", "4",
+                   "--num_modes", "1", "--exhaustiveness", "8", "-o", str(out)]
+            subprocess.run(cmd, check=True, capture_output=True, timeout=900)
+            if not out.exists():
+                return None
+            poses = [m for m in Chem.SDMolSupplier(str(out), removeHs=False)
+                     if m is not None]
+            return poses[0] if poses else None
 
-    def _compute_ifp(self, pose, target_class: str):
-        """ProLIF Fingerprint of pose vs binding-site residues -> bitvector."""
-        raise NotImplementedError("ProLIF IFP computation not yet implemented")
+    def _compute_ifp(self, pose, target_class: str) -> set[str]:
+        """ProLIF interaction fingerprint of the docked pose vs the receptor."""
+        import MDAnalysis as mda
+        import prolif as plf
+        rec, _ = self._prep_receptor(target_class)
+        if rec is None:
+            return set()
+        prot = plf.Molecule.from_mda(mda.Universe(str(rec)).select_atoms("protein"))
+        lig = plf.Molecule.from_rdkit(pose)
+        fp = plf.Fingerprint()
+        fp.run_from_iterable([lig], prot, progress=False)
+        return set(ifp_keys_from_fingerprint(fp))
 
-    def _match_reference(self, ifp, target_class: str) -> tuple[float, Optional[str]]:
-        """Max IFP-Tanimoto to the class's reference actives -> (sim, ref_id)."""
-        raise NotImplementedError("ProLIF reference matching not yet implemented")
+    def _match_reference(self, ifp_keys, target_class: str) -> tuple[float, Optional[str]]:
+        """Max IFP Tanimoto (Jaccard) to the class's reference actives → (sim, ref_pdb)."""
+        query = set(ifp_keys)
+        best_sim, best_ref = 0.0, None
+        for active in self._load_reference().get(target_class, {}).get("actives", []):
+            ref = set(active.get("ifp_keys", []))
+            union = len(query | ref)
+            if union == 0:
+                continue
+            sim = len(query & ref) / union
+            if sim > best_sim:
+                best_sim, best_ref = sim, active.get("source_pdb")
+        return best_sim, best_ref
 
     def _sim_to_score(self, sim: float) -> float:
         """Map IFP Tanimoto (>= threshold) to an FG-comparable score."""
