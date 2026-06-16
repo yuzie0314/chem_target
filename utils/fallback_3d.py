@@ -303,7 +303,9 @@ class ProLIFFallback(Fallback3D):
             w = Chem.SDWriter(str(lig_in)); w.write(mol); w.close()
             cmd = [backend, "--receptor", str(rec), "--ligand", str(lig_in),
                    "--autobox_ligand", str(box), "--autobox_add", "4",
-                   "--num_modes", "1", "--exhaustiveness", "8", "-o", str(out)]
+                   "--num_modes", "1", "--exhaustiveness", "8",
+                   "--seed", "0",          # deterministic docking
+                   "-o", str(out)]
             subprocess.run(cmd, check=True, capture_output=True, timeout=900)
             if not out.exists():
                 return None

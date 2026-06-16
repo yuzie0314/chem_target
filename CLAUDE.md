@@ -459,6 +459,21 @@ deps lazy; `check` runs anywhere. **Env status (2026-06-16): rdkit ✓, requests
 MISSING (build-time, `pip install prolif MDAnalysis`); no docking backend (query-time only, e.g.
 `conda install -c conda-forge smina`).** db/prolif_pdb/ + db/prolif_reference_ifp.json are gitignored.
 
+**3D-fallback tune list (once installed + library built):**
+- **Receptor prep**: `_dock` currently feeds smina a raw PDB receptor (no PDBQT prep). Fine for a PoC,
+  but for docking accuracy add proper prep (meeko / `prepare_receptor` → PDBQT: protonation, charges,
+  rigid/flex split). Same for the autobox ligand reference.
+- **Confidence gate thresholds** (`target_predictor`): `_CONF_MIN_TOP1_SCORE=3.0`, `_CONF_MIN_MARGIN=0.75`
+  — currently routes 40% of misses + flags 41 hits; tune vs the hit/miss cross-tab.
+- **ProLIF similarity→score** (`ProLIFFallback`): `sim_threshold=0.6`, `score_scale=8.0` — sim must be
+  high to be competitive (FALSE-POS recovery needs sim≈0.9+ to beat score-6 winners; NO-ANSWER ≈0.7).
+- **Reference set coverage**: seed has 5 serine-protease co-crystals; add more non-benzamidine
+  peptidomimetic complexes so the 8 SP misses have a near neighbour.
+- **Docking determinism**: smina `--seed 0` already set; consider `--num_modes>1` + best-IFP-over-poses,
+  and tune `--exhaustiveness`/`--autobox_add`.
+- **Override policy**: `build_override` currently boosts/inserts one proposal; for FALSE-POS re-rank at
+  scale, consider top-K docking + a meta-reconciler (Option 2) rather than the single low-conf gate.
+
 \### Other improvements
 
 1. **SDF / MOL2 input support** (`utils/io_handler.py`) — currently only CSV supported
