@@ -38,10 +38,10 @@ based on functional group analysis. Long-term: consultancy tool + SaaS.
 chem_target/
 ├── constants/      # Static lookup tables only. No logic.
 │   ├── fg_names.py     # FG_NAMES: rdkit fr_* → human readable (legacy)
-│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (41 patterns + Steroid Python = 42 total)
+│   └── fg_smarts.py    # FG_SMARTS: name → SMARTS (42 patterns + Steroid Python = 43 total)
 ├── db/             # Auto-generated. Never hand-edit.
-│   ├── fg_database.json       # 42 FG metadata: smarts/targets/mechanistic_weight
-│   ├── fg_residue_table.csv   # 41 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json       # 43 FG metadata: smarts/targets/mechanistic_weight
+│   ├── fg_residue_table.csv   # 42 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json  # RCSB CCD SMILES cache
 │   └── residue_3d_poses.json  # Cα + ligand centroid 3D records
 ├── utils/          # Pure functions. No side effects where possible.
@@ -242,15 +242,16 @@ conda environment name: `chem\_target`
 | Component | Status |
 |---|---|
 | conda env + rdkit + openbabel | ✅ Done |
-| 41 FG SMARTS + Steroid Python = 42 total (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (42 entries incl. Triazole+Thiazole+Benzimidazole+Morpholine+Pyrimidine+Triazine+Anthraquinone, mechanistic_weight) | ✅ Done |
-| `db/fg_residue_table.csv` (BioLiP rebuild, 41 SMARTS + Steroid columns) | ✅ Done |
+| 42 FG SMARTS + Steroid Python = 43 total (`constants/fg_smarts.py`) | ✅ Done |
+| `db/fg_database.json` (43 entries incl. …+Pyrimidine+Triazine+Anthraquinone+Guanidine, mechanistic_weight) | ✅ Done |
+| Serine protease Guanidine FG (arginine-mimetic → SP, mw 3.0) | ✅ 13/20 (+1, zero regression) |
+| `db/fg_residue_table.csv` (BioLiP rebuild, 42 SMARTS + Steroid columns) | ✅ Done |
 | `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
 | `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
 | `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
 | `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Core 11-class Top-1: 188/220 = 85.5%** (mechanistic classes) | ✅ Current best |
-| **Core 11-class Top-3: 196/220 = 89.1%** | ✅ Current best |
+| **Core 11-class Top-1: 190/220 = 86.4%** (mechanistic classes) | ✅ Current best |
+| **Core 11-class Top-3: 197/220 = 89.5%** | ✅ Current best |
 | Blind-spot rule-backed: MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20 | ✅ |
 | MAO covalent-warhead rule (Propargylamine/Hydrazine) | ✅ Done |
 | COMT (nitrocatechol via existing Phenol+Catechol) | ✅ 8/20 (pChEMBL-bias limited) |
@@ -282,8 +283,8 @@ conda environment name: `chem\_target`
 | HDAC | 20/20 = 100% | 20/20 | ✅ |
 | Carbonic anhydrase | 20/20 = 100% | 20/20 | ✅ |
 | Tubulin | 19/20 = 95% | 19/20 | -1 GS-9256 (thiazole+ether → CYP rule; profile indistinguishable from ritonavir-class) |
-| Nuclear receptor | 16/20 = 80% | 20/20 | 4 losses: 2× Acylsulfonamide→tubulin + 2× structural |
-| Serine protease | 12/20 = 60% | 12/20 | 8 failures: no Benzamidine FG signal |
+| Nuclear receptor | 17/20 = 85% | 20/20 | +1 from Guanidine FG IDF shift; remaining: Acylsulfonamide→tubulin + structural |
+| Serine protease | 13/20 = 65% | 13/20 | +1 by Guanidine FG (CHEMBL353760, arginine-mimetic→SP). 7 remaining peptidomimetics have NO amidine/guanidine S1 group (structural) |
 | COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
 | Kinase | 18/20 = 90% | 18/20 | +4 by pyrimidine router (mono-pyrimidine→kinase, branch 3); earlier +6 αβunsat+Sulfonamide. 2 remaining: 1 strong-GPCR (CHEMBL5270693), 1 Steroid |
 | CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural. Pyrimidine guard added (no CYP450 TP has pyrimidine) |
@@ -319,6 +320,7 @@ comparison never used them, so it is unaffected.
 | FG | mw | Target class | Rationale |
 |---|---|---|---|
 | Benzamidine | 3.0 | serine protease | S1-pocket bidentate H-bond |
+| Guanidine | 3.0 | serine protease | Arginine-mimetic guanidinium → S1 pocket (parallel to Benzamidine) |
 | Hydroxamate | 2.5 | HDAC | Bidentate Zn chelation |
 | Sulfonamide | 2.0 | carbonic anhydrase | Zn coordination |
 | Acylsulfonamide | 2.0 | tubulin | Macrolide warhead |
@@ -382,7 +384,7 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 1. **mTOR 85% (17/20)**: SIROLIMUS fixed by macrolide rule; 16 ATP-competitive TORKinibs fixed by morpholino-diazine rule (2026-06-15). 3 remaining have NO morpholine: SAPANISERTIB & CHEMBL3645910 (pyrimidine core only, no morpholine), CHEMBL3681183 (Hydroxyl+Imidazole → CYP450). These need fused-N-heteroaromatic core detection (方案 4, flagged in Next tasks) — do NOT try to fix with the morpholino rule.
 2. **Adenosine receptor 60% (12/20)**: +7 by pyrimidine router branch 2 (fused-azolo-diazine→adenosine, 2026-06-15). 8 remaining have NO purine-mimetic fused core: sparse Phenol+Phenyl+Halogen→NR (CHEMBL2024114, 97760), Nitrile+Triazole→cys protease/kinase (CHEMBL5177144, 5171044), Steroid (CHEMBL369573), Thiazole+Nitrile→CYP (CHEMBL2419137, 2419150), non-fused Thiazole+Pyrimidine (CHEMBL3917647).
 3. **CYP450 95% (19/20)**: 1 remaining failure = TAZAROTENIC ACID (pyridine scaffold; no azole/halogen FG → invisible to CYP scoring). Thiazole SMARTS (2026-06-04) fixed ritonavir-class ×5 compound.
-4. **Serine protease 60% (12/20)**: 8 failures have no Benzamidine. Peptidomimetics look like NR/tubulin/GPCR.
+4. **Serine protease 65% (13/20)**: +1 by Guanidine FG (CHEMBL353760, 2026-06-16). 7 remaining peptidomimetics have NO S1 Arg-mimetic at all (no Benzamidine/Guanidine/amidine) — verified; structural, not a missing-pattern gap. They look like NR/tubulin/GPCR/CA.
 5. **Kinase 90% (18/20)**: +4 by pyrimidine router branch 3 (mono-pyrimidine→kinase, 2026-06-15; recovered ERLOTINIB, CHEMBL29197/176582/174426). 2 remaining: CHEMBL5270693 (strong GPCR score 6.31 from TertAmine+Indole+Phenyl beats kinase bonus), CHEMBL4537790 (Steroid scaffold → androgen).
 6. **NR 80% (16/20)**: 2 Acylsulfonamide→tubulin (irreconcilable without hurting tubulin). 2 purely structural.
 
@@ -499,7 +501,10 @@ infra is committed, so the ProLIF PoC can resume anytime without blocking other 
    but the most shape-separable class (GPCR) is already 100%, so **no shape SCORING rule was added**
    (would risk the 188 core for no gain). Shape-based help for the misses (e.g. flat XO vs kinase)
    would need the same gated 3D-fallback treatment as ProLIF — deferred.
-3. **Serine protease Benzamidine coverage** — 8 failures have no Benzamidine (peptidomimetics); possible solution: add guanidine or charged amidino group pattern
+3. ~~Serine protease guanidine coverage~~ ✅ DONE (2026-06-16): Guanidine FG (mw 3.0→SP) recovered
+   CHEMBL353760 (SP 12→13); zero regression (the 4 guanidine compounds were all already misses), and
+   the IDF shift incidentally nudged NR 16→17. Data finding: only 1/8 SP misses had guanidine; the
+   other 7 carry NO S1 Arg-mimetic → structural limit, no further pattern will help.
 4. **ProLIF 3D-fallback (PAUSED)** — infra committed; resume needs PDBFixer protein-prep (see 3D-fallback section)
 
 \### ✅ 方案 4 (DONE — detection complete; no further scoring ROI on this benchmark)

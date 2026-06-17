@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 41 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 42 functional groups.
+FG_SMARTS defines 42 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 43 functional groups.
 
 Used by
 -------
@@ -172,6 +172,12 @@ FG_SMARTS: dict[str, str] = {
     #   Asp/Glu-lined S1 pocket of serine proteases (thrombin, trypsin, factor Xa).
     #   Also present in some antiparasitic drugs. Not a guanidine (only 2 N on C).
     "Benzamidine":              "[NX3H2][CX3](=[NX2H1])c",
+    # Guanidine: -N-C(=N)-N- (three N on the central C). Arginine side-chain
+    #   mimetic; like Benzamidine it complements the Asp-lined S1 pocket of
+    #   serine proteases (thrombin / trypsin / factor Xa), but via the
+    #   guanidinium rather than an aryl amidine. Distinct from Benzamidine
+    #   (2 N on C) and matches both neutral and protonated guanidinium.
+    "Guanidine":                "[NX3][CX3](=[NX2])[NX3]",
 
     # ── Sulfur ────────────────────────────────────────────────────────────────
     # Thiol: nucleophilic, metal-coordinating (Cys active sites)

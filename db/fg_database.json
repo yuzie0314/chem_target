@@ -467,6 +467,17 @@
       ],
       "mechanistic_weight": 2.5,
       "source": "manual"
+    },
+    "Guanidine": {
+      "smarts": "[NX3][CX3](=[NX2])[NX3]",
+      "pubchem_cid": 3520,
+      "chebi_id": "CHEBI:15842",
+      "description": "Guanidino group (three N on the central C); arginine side-chain mimetic that complements the Asp-lined S1 pocket of serine proteases (thrombin/trypsin/factor Xa), analogous to Benzamidine.",
+      "known_target_classes": [
+        "serine protease"
+      ],
+      "mechanistic_weight": 3.0,
+      "source": "manual"
     }
   }
 }

@@ -16,8 +16,8 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  42 functional groups
-  │  41 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
+  │  FG Detection  (fg_detector.py)     │  43 functional groups
+  │  42 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
   │  azolo-diazine + scaffold cores     │  per molecule
   └─────────────────────────────────────┘
         │
@@ -144,8 +144,8 @@ Outputs saved to `output/benchmark/`:
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Core 11 mechanistic classes (2026-06-15)** | **220** | **85.5% (188/220)** | **89.1% (196/220)** |
-| + blind-spot rule-backed (MAO, COMT, cysteine protease, topoisomerase) | 300 | 71.7% (215/300) | — |
+| **Core 11 mechanistic classes (2026-06-16)** | **220** | **86.4% (190/220)** | **89.5% (197/220)** |
+| + blind-spot rule-backed (MAO, COMT, cysteine protease, topoisomerase) | 300 | 72.3% (217/300) | — |
 
 Per-class (curated, 20 compounds each):
 
@@ -158,10 +158,10 @@ Per-class (curated, 20 compounds each):
 | Tubulin | 95% | 100% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
 | Kinase | 90% | 95% | Pyrimidine router (mono-pyrimidine→kinase) + α,β-unsat. warhead bonuses |
 | mTOR | 85% | 85% | Morpholino-diazine (TORKinib) + Macrolide (rapalog) motifs; 3 remain (no morpholine) |
-| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict (2) + structural (2) |
+| Nuclear receptor | 85% | 100% | +1 (Guanidine FG IDF shift); Acylsulfonamide conflict + structural |
 | COX | 75% | 85% | Indole+Sulfonamide conditional motif |
 | Adenosine receptor | 60% | 60% | Pyrimidine router (fused-azolo-diazine→adenosine); 8 remain (no purine-mimetic core) |
-| Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
+| Serine protease | 65% | 65% | Benzamidine + Guanidine (arginine-mimetic) → S1 pocket; 7 peptidomimetics have no Arg-mimetic |
 | cysteine protease | 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via gated Nitrile+Amide rule |
 | COMT | 40% | — | nitrocatechol (entacapone/opicapone) via Phenol+Catechol; other 12 = research analogs |
 | topoisomerase | 25% | — | anthracycline intercalators (doxorubicin etc.) via Anthraquinone voting FG; 15 = research series |
