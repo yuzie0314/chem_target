@@ -72,9 +72,9 @@ _SEED_REFERENCES: dict[str, dict] = {
         "complexes": [
             {"pdb": "3PTB", "ligand_resname": "BEN", "note": "trypsin + benzamidine"},
             {"pdb": "1OYT", "ligand_resname": "FSN", "note": "thrombin + non-covalent inhibitor"},
-            {"pdb": "1DWD", "ligand_resname": "MIT", "note": "thrombin + NAPAP"},
-            {"pdb": "2ZFF", "ligand_resname": "DX9", "note": "factor Xa + peptidomimetic"},
-            {"pdb": "1F0R", "ligand_resname": "RPR", "note": "factor Xa + non-benzamidine"},
+            {"pdb": "1DWD", "ligand_resname": "MID", "note": "thrombin + NAPAP"},
+            {"pdb": "2ZFF", "ligand_resname": "53U", "note": "factor Xa + peptidomimetic"},
+            {"pdb": "1F0R", "ligand_resname": "815", "note": "factor Xa + non-benzamidine"},
         ],
     },
 }
@@ -201,6 +201,34 @@ def _protonate(pdb_path: Path) -> Path:
         return pdb_path
 
 
+def _prep_protein_pdbfixer(pdb_path: Path) -> Optional[Path]:
+    """Protonate the protein with PDBFixer (topology-preserving) → cached PDB.
+
+    Unlike OpenBabel (which mangles chain/residue numbering and triggers a ProLIF
+    ResidueId KeyError), PDBFixer keeps the protein topology intact: it strips
+    heterogens/water, fills missing atoms, and adds hydrogens at pH 7.0. Returns
+    the protonated protein PDB path, or None on failure.
+    """
+    out = pdb_path.with_name(pdb_path.stem + "_pf.pdb")
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    try:
+        from pdbfixer import PDBFixer            # lazy
+        from openmm.app import PDBFile            # lazy
+        fixer = PDBFixer(filename=str(pdb_path))
+        fixer.removeHeterogens(keepWater=False)   # protein only; ligand handled separately
+        fixer.findMissingResidues()
+        fixer.findMissingAtoms()
+        fixer.addMissingAtoms()
+        fixer.addMissingHydrogens(7.0)
+        with open(out, "w") as fh:
+            PDBFile.writeFile(fixer.topology, fixer.positions, fh, keepIds=True)
+        return out
+    except Exception as exc:  # noqa: BLE001
+        print(f"    [warn] PDBFixer protein prep failed for {pdb_path.name}: {exc}")
+        return None
+
+
 def _protonate_ligand(original_pdb: Path, resname: str):
     """Extract a ligand by resname from the ORIGINAL PDB, protonate it standalone
     (OpenBabel perceives bond orders from the crystal geometry + adds H), and
@@ -239,10 +267,12 @@ def _ifp_from_complex(pdb_path: Path, ligand_resname: str):
     import prolif as plf              # lazy
     from utils.fallback_3d import ifp_keys_from_fingerprint
 
-    prot_pdb = _protonate(pdb_path)   # protein side: H added, AA resnames preserved
+    prot_pdb = _prep_protein_pdbfixer(pdb_path)   # topology-preserving H (avoids ProLIF KeyError)
+    if prot_pdb is None:
+        return None, 0
     prot_sel = mda.Universe(str(prot_pdb)).select_atoms("protein")
     if prot_sel.n_atoms == 0:
-        print(f"    [warn] {pdb_path.name}: protein not found after protonation")
+        print(f"    [warn] {pdb_path.name}: protein not found after PDBFixer prep")
         return None, 0
     lig_rdkit = _protonate_ligand(pdb_path, ligand_resname)
     if lig_rdkit is None:
