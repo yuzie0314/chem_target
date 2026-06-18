@@ -47,7 +47,7 @@ chem_target/
 ├── utils/          # Pure functions. No side effects where possible.
 │   ├── fg_detector.py         # detect_smarts(), _detect_steroid_core(), _detect_fused_azolo_diazine()
 │   ├── target_predictor.py    # IDF × mw scoring + conditional rules + _pyrimidine_router() + confidence gate / register_fallback_3d
-│   ├── fallback_3d.py         # 3D-fallback interface (Fallback3D, ProLIFFallback stub, build_override) — lazy heavy deps
+│   ├── fallback_3d.py         # 3D-fallback (Fallback3D, ProLIFFallback: pH-protonate→per-reference smina dock→ProLIF IFP→Jaccard, build_override) — lazy heavy deps
 │   ├── build_prolif_reference.py  # env check + ProLIF reference-IFP builder (check|build) → db/prolif_reference_ifp.json
 │   ├── interaction_analyzer.py  # BioLiP → fg_residue_table.csv
 │   ├── pose_extractor.py      # 3D pose extractor → residue_3d_poses.json
@@ -272,6 +272,7 @@ conda environment name: `chem\_target`
 | 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
 | Input formats: CSV + SDF(RDKit) + MOL2(OpenBabel) + SMI + InChI — `read_file` dispatch, wired in main.py fg/predict | ✅ Done |
 | 3D shape descriptors (`utils/shape_descriptors.py`: NPR1/NPR2, Rg, asphericity…) — opt-in `predict --shape` | ✅ Done (informational) |
+| ProLIF 3D-fallback end-to-end (smina + PDBFixer + pH7.4 protonation + per-reference docking + chain-stripped IFP; 9-co-crystal SP lib) — NOT auto-registered → zero regression | ✅ Done (runs; opt-in) |
 
 ---
 
@@ -443,52 +444,63 @@ regression** (verified: core 11 stays 188/220). Plug real models via `register_f
   Method map (from failure-mode analysis): shape/ProLIF = retrieval for NO-ANSWER; Gnina rescore =
   re-rank for FALSE-POS (but needs an always-on or top-K trigger, not the confidence gate).
 
-**ProLIF fallback IMPLEMENTED (`utils/fallback_3d.py`)**: `Fallback3D` base + `ProLIFFallback` with the
-full 4-step pipeline written: `_embed_3d` (RDKit ETKDGv3+MMFF) → `_dock` (smina subprocess,
-`--autobox_ligand` on the reference co-crystal ligand) → `_compute_ifp` (ProLIF Fingerprint vs receptor)
-→ `_match_reference` (Jaccard on interaction-key sets). `build_override()` re-rank/merge contract tested.
-**IFP representation = set of "PROTRES.Interaction" keys** (e.g. ASP189.HBDonor) shared by builder and
-fallback — NOT raw bitvectors (those aren't aligned across molecules); Tanimoto = Jaccard on key-sets.
-`propose()` swallows all errors → None, and short-circuits when no reference library exists, so it stays
-**zero-regression** until a library is built (verified 0/320 top1 change registered). Heavy deps
-(ProLIF/MDAnalysis/docking) lazy-imported. **Runs once installed + reference built.** Regression surface
-for Option 1 = the 41 low-confidence HITS (overrides must not break them).
+**✅ ProLIF fallback RUNS END-TO-END (`utils/fallback_3d.py`, 2026-06-18)** — the old OpenBabel
+protein-prep blocker is RESOLVED and the serine-protease reference library is BUILT. Pipeline
+(`ProLIFFallback`, all implemented, not stubbed):
+`_embed_3d` (**pH 7.4 protonation via `_protonate_smiles` — same OpenBabel model the builder uses;
+amidine/guanidine → cationic, COOH → anionic** — then RDKit ETKDGv3+MMFF) → `_best_match`, which docks
+the query into **EACH reference's own receptor** (`_dock_and_ifp`: smina subprocess, `--autobox_ligand`,
+`--seed 0`; ProLIF Fingerprint vs that receptor) and takes the max Jaccard. `build_override()`
+re-rank/merge contract tested.
+- **Per-reference docking, NOT a single shared receptor**: each reference IFP lives in its own crystal
+  frame (trypsin/thrombin/FXa). Docking the query into one fixed receptor put non-trypsin
+  peptidomimetics in the wrong frame — rivaroxaban self-matched at only **0.33**. After per-reference
+  docking (redock into 2W26 FXa) rivaroxaban self-matches at **1.0**; benzamidine→3PTB **1.0**;
+  ibuprofen (negative) **0.25** → no false positive. Cost: N docks/query (~50s each; ~20 min for the
+  9-ref SP library). Distinct receptors are docked once each (cached per query).
+- **IFP keys are CHAIN-STRIPPED** (`ifp_keys_from_fingerprint` → `rsplit('.',1)[0]`): SP family shares
+  chymotrypsin numbering (ASP189/SER195/GLY216/219/HIS57 align across trypsin/thrombin/FXa), so dropping
+  the crystal chain id makes references cross-PDB comparable. Key form = **"RESNAMERESNUM.Interaction"**
+  (e.g. `ASP189.Cationic`) shared by builder and fallback — NOT raw bitvectors (unaligned across mols).
+- `propose()` swallows all errors → None; **strict `sim > threshold`** (a boundary `sim==threshold`
+  maps to score 0.0, a useless proposal — caffeine docks the trypsin S1 at ≈0.60). Heavy deps lazy.
+- **Still NOT auto-registered** (default hook = no-op stub) → predict/benchmark byte-identical
+  (core 190/220 unchanged). Activate: `register_fallback_3d(ProLIFFallback())`. Regression surface = the
+  41 low-confidence HITS (overrides must not break them).
+- **`_find_backend()`**: smina 2020.12.10 lives at `<env>/Library/bin/smina.exe`; `shutil.which` misses
+  it without `conda activate`, so `_find_backend` also probes `sys.prefix`/{Library/bin,bin,Scripts}.
 
-**Reference-library builder DONE (`utils/build_prolif_reference.py check|build`)**: builds
-db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP, no docking on the
-reference side; docking only at query time). Seed set = serine-protease complexes (trypsin 3PTB+BEN,
-thrombin 1OYT/1DWD, factor Xa 2ZFF/1F0R — expand with more non-benzamidine peptidomimetics). Heavy
-deps lazy; `check` runs anywhere. **Env status (2026-06-16): chem_target has rdkit + ProLIF 2.1.0 +
-MDAnalysis 2.9.0 + requests ✓ (build-ready); no docking backend yet (query-time, `conda install -c
-conda-forge smina`).** NOTE: the user's interactive shell can't `conda activate` (run via the full
-path `C:\Users\User\miniconda3\envs\chem_target\python.exe`). db/prolif_pdb/ + db/prolif_reference_ifp.json
-gitignored.
+**Reference-library builder (`utils/build_prolif_reference.py check|build`)**: builds
+db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP; no docking on the
+reference side). **Current library = 9 serine-protease co-crystals**: 3PTB/BEN, 1OYT/FSN, 1DWD/MID,
+2ZFF/53U, 1F0R/815 + 4 non-benzamidine peptidomimetic FXa (**2W26/rivaroxaban, 2P16/GG2, 2RA0/JNJ,
+2J34/GS6**) for the 8 SP misses with no Arg-mimetic S1 anchor.
+- **PDBFixer protein prep is crash-resilient**: `_pdbfixer_worker` runs in a **subprocess** (so a native
+  `addMissingAtoms()` segfault on a pathological structure — e.g. FXa 2W26 — can't kill the batch); the
+  parent retries WITHOUT addMissingAtoms (skipped atoms are surface side chains, not the S1/triad). This
+  recovered 1OYT and 2W26. Ligand still protonated standalone via OpenBabel (`_protonate_ligand`).
+- **Env (2026-06-18)**: rdkit 2023.09.6 + ProLIF 2.1.0 + MDAnalysis 2.9.0 + pdbfixer + openmm + requests
+  + **smina 2020.12.10** all installed. Interactive shell can't `conda activate` — run via the full path
+  `C:\Users\User\miniconda3\envs\chem_target\python.exe`. db/prolif_pdb/ + db/prolif_reference_ifp.json
+  gitignored (rebuild offline: `python utils/build_prolif_reference.py build --target "serine protease"`).
 
-**⛔ Build blocker (protein prep) — reference library NOT yet built (2026-06-16):** the builder now
-auto-fixes conda OpenBabel's plugin path (`_setup_openbabel`: BABEL_LIBDIR/DATADIR + add_dll_directory
-from sys.prefix), protonates ligand + protein, and sources them separately (OpenBabel drops HETATM
-resnames). BUT OpenBabel mangles **protein** chain/residue topology → ProLIF raises
-`KeyError: ResidueId(...)` in `Fingerprint.generate`. **Fix: prepare the protein with a
-topology-preserving tool (PDBFixer/openmm or `reduce`), not OpenBabel** — `conda install -c conda-forge
-pdbfixer openmm`, then swap the protein branch of `_ifp_from_complex` to a PDBFixer addMissingHydrogens
-pass (keep OpenBabel only for the ligand). Decision pending: this is real structural-prep yak-shaving
-for a ~7-compound (serine-protease) payoff; the FG core (188/220) is unaffected and all 3D-fallback
-infra is committed, so the ProLIF PoC can resume anytime without blocking other work.
-
-**3D-fallback tune list (once installed + library built):**
-- **Receptor prep**: `_dock` currently feeds smina a raw PDB receptor (no PDBQT prep). Fine for a PoC,
-  but for docking accuracy add proper prep (meeko / `prepare_receptor` → PDBQT: protonation, charges,
-  rigid/flex split). Same for the autobox ligand reference.
+**3D-fallback tune list (now that it runs):**
+- **Per-reference docking cost**: N docks/query is the dominant cost. Consider top-K reference receptors,
+  parallelising docks, or a cheaper pre-filter (shape) before docking.
+- **Receptor prep**: smina is fed a PDBFixer-prepped PDB (no PDBQT). For accuracy add meeko /
+  `prepare_receptor` → PDBQT (charges, rigid/flex). Same for the autobox ligand.
 - **Confidence gate thresholds** (`target_predictor`): `_CONF_MIN_TOP1_SCORE=3.0`, `_CONF_MIN_MARGIN=0.75`
-  — currently routes 40% of misses + flags 41 hits; tune vs the hit/miss cross-tab.
-- **ProLIF similarity→score** (`ProLIFFallback`): `sim_threshold=0.6`, `score_scale=8.0` — sim must be
-  high to be competitive (FALSE-POS recovery needs sim≈0.9+ to beat score-6 winners; NO-ANSWER ≈0.7).
-- **Reference set coverage**: seed has 5 serine-protease co-crystals; add more non-benzamidine
-  peptidomimetic complexes so the 8 SP misses have a near neighbour.
-- **Docking determinism**: smina `--seed 0` already set; consider `--num_modes>1` + best-IFP-over-poses,
-  and tune `--exhaustiveness`/`--autobox_add`.
-- **Override policy**: `build_override` currently boosts/inserts one proposal; for FALSE-POS re-rank at
-  scale, consider top-K docking + a meta-reconciler (Option 2) rather than the single low-conf gate.
+  — routes 40% of misses + flags 41 hits; tune vs the hit/miss cross-tab.
+- **ProLIF similarity→score** (`ProLIFFallback`): `sim_threshold=0.6`, `score_scale=8.0` — FALSE-POS
+  recovery needs sim≈0.9+ to beat score-6 winners; NO-ANSWER ≈0.7. Known limit: a query docked into a
+  non-native receptor may not reproduce the crystal pose, so some peptidomimetics still land < 0.6
+  (lowering the threshold risks false positives — see ibuprofen 0.25).
+- **Reference set coverage**: 9 SP co-crystals; add more non-benzamidine peptidomimetic complexes so the
+  remaining SP misses have a near neighbour.
+- **Docking determinism**: smina `--seed 0` set; consider `--num_modes>1` + best-IFP-over-poses, tune
+  `--exhaustiveness`/`--autobox_add`.
+- **Override policy**: `build_override` boosts/inserts one proposal; for FALSE-POS re-rank at scale,
+  consider top-K docking + a meta-reconciler (Option 2) rather than the single low-conf gate.
 
 \### Other improvements
 
@@ -505,7 +517,11 @@ infra is committed, so the ProLIF PoC can resume anytime without blocking other 
    CHEMBL353760 (SP 12→13); zero regression (the 4 guanidine compounds were all already misses), and
    the IDF shift incidentally nudged NR 16→17. Data finding: only 1/8 SP misses had guanidine; the
    other 7 carry NO S1 Arg-mimetic → structural limit, no further pattern will help.
-4. **ProLIF 3D-fallback (PAUSED)** — infra committed; resume needs PDBFixer protein-prep (see 3D-fallback section)
+4. ~~ProLIF 3D-fallback~~ ✅ RUNS END-TO-END (2026-06-18): smina + PDBFixer protein-prep + pH 7.4
+   query protonation + per-reference docking + chain-stripped IFP keys; 9-co-crystal SP reference
+   library (4 peptidomimetic FXa added). Validated: benzamidine 1.0, rivaroxaban 1.0, ibuprofen 0.25.
+   Still NOT auto-registered → zero regression. Next: per-ref docking cost, more SP co-crystals, then
+   measure net gain of `register_fallback_3d(ProLIFFallback())` on the SP misses vs 41 low-conf-hit risk.
 
 \### ✅ 方案 4 (DONE — detection complete; no further scoring ROI on this benchmark)
 

@@ -75,6 +75,12 @@ _SEED_REFERENCES: dict[str, dict] = {
             {"pdb": "1DWD", "ligand_resname": "MID", "note": "thrombin + NAPAP"},
             {"pdb": "2ZFF", "ligand_resname": "53U", "note": "factor Xa + peptidomimetic"},
             {"pdb": "1F0R", "ligand_resname": "815", "note": "factor Xa + non-benzamidine"},
+            # Non-benzamidine peptidomimetics — near-neighbours for the 8 SP misses
+            # that carry no Arg-mimetic S1 anchor (rivaroxaban/apixaban-class).
+            {"pdb": "2W26", "ligand_resname": "RIV", "note": "factor Xa + rivaroxaban"},
+            {"pdb": "2P16", "ligand_resname": "GG2", "note": "factor Xa + razaxaban-class"},
+            {"pdb": "2RA0", "ligand_resname": "JNJ", "note": "factor Xa + peptidomimetic"},
+            {"pdb": "2J34", "ligand_resname": "GS6", "note": "factor Xa + peptidomimetic"},
         ],
     },
 }
@@ -201,32 +207,67 @@ def _protonate(pdb_path: Path) -> Path:
         return pdb_path
 
 
+def _pdbfixer_worker(in_pdb: str, out_pdb: str, add_missing_atoms: bool) -> None:
+    """Run one PDBFixer prep pass (intended to be invoked in a child process).
+
+    addMissingAtoms() crashes *natively* (segfault, no Python exception) on some
+    crystal structures (e.g. FXa 2W26 — 7 incomplete side chains), which would kill
+    the whole batch build. Isolating this in a subprocess lets the parent survive
+    the crash (non-zero exit) and retry with add_missing_atoms=False — incomplete
+    surface side chains don't affect the conserved S1/triad interactions we score.
+    """
+    from pdbfixer import PDBFixer            # lazy
+    from openmm.app import PDBFile           # lazy
+    fixer = PDBFixer(filename=in_pdb)
+    fixer.removeHeterogens(keepWater=False)  # protein only; ligand handled separately
+    fixer.findMissingResidues()
+    fixer.findMissingAtoms()
+    if add_missing_atoms:
+        fixer.addMissingAtoms()
+    else:
+        fixer.missingAtoms, fixer.missingTerminals = {}, {}
+    fixer.addMissingHydrogens(7.0)
+    with open(out_pdb, "w") as fh:
+        PDBFile.writeFile(fixer.topology, fixer.positions, fh, keepIds=True)
+
+
 def _prep_protein_pdbfixer(pdb_path: Path) -> Optional[Path]:
     """Protonate the protein with PDBFixer (topology-preserving) → cached PDB.
 
     Unlike OpenBabel (which mangles chain/residue numbering and triggers a ProLIF
     ResidueId KeyError), PDBFixer keeps the protein topology intact: it strips
-    heterogens/water, fills missing atoms, and adds hydrogens at pH 7.0. Returns
-    the protonated protein PDB path, or None on failure.
+    heterogens/water, fills missing atoms, and adds hydrogens at pH 7.0.
+
+    The prep runs in an isolated subprocess so a native PDBFixer crash on a
+    pathological structure can't kill the batch build. The full prep (with
+    addMissingAtoms) is tried first; if it crashes, a second pass skips
+    addMissingAtoms (the usual crash culprit). Returns the prepped PDB or None.
     """
     out = pdb_path.with_name(pdb_path.stem + "_pf.pdb")
     if out.exists() and out.stat().st_size > 0:
         return out
-    try:
-        from pdbfixer import PDBFixer            # lazy
-        from openmm.app import PDBFile            # lazy
-        fixer = PDBFixer(filename=str(pdb_path))
-        fixer.removeHeterogens(keepWater=False)   # protein only; ligand handled separately
-        fixer.findMissingResidues()
-        fixer.findMissingAtoms()
-        fixer.addMissingAtoms()
-        fixer.addMissingHydrogens(7.0)
-        with open(out, "w") as fh:
-            PDBFile.writeFile(fixer.topology, fixer.positions, fh, keepIds=True)
-        return out
-    except Exception as exc:  # noqa: BLE001
-        print(f"    [warn] PDBFixer protein prep failed for {pdb_path.name}: {exc}")
-        return None
+    import subprocess  # lazy
+    worker = ("import sys; from utils.build_prolif_reference import _pdbfixer_worker; "
+              "_pdbfixer_worker(sys.argv[1], sys.argv[2], sys.argv[3] == 'True')")
+    for add_atoms in ("True", "False"):
+        try:
+            r = subprocess.run(
+                [sys.executable, "-c", worker, str(pdb_path), str(out), add_atoms],
+                cwd=str(_ROOT), capture_output=True, timeout=600,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"    [warn] PDBFixer subprocess failed for {pdb_path.name}: {exc}")
+            return None
+        if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
+            if add_atoms == "False":
+                print(f"    [info] {pdb_path.name}: prepped without addMissingAtoms "
+                      f"(full prep crashed)")
+            return out
+        if out.exists():
+            out.unlink()   # clear any partial write before the retry
+    print(f"    [warn] PDBFixer protein prep failed for {pdb_path.name} "
+          f"(crashed even without addMissingAtoms)")
+    return None
 
 
 def _protonate_ligand(original_pdb: Path, resname: str):

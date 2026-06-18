@@ -82,10 +82,17 @@ _PDB_DIR = _ROOT / "db" / "prolif_pdb"   # cached PDBs (shared with build script
 # give a stable, human-readable space and an unambiguous Tanimoto (Jaccard).
 
 def ifp_keys_from_fingerprint(fp) -> list[str]:
-    """Extract sorted ['PROTRES.Interaction', ...] keys from a run ProLIF Fingerprint.
+    """Extract sorted ['RESNAMERESNUM.Interaction', ...] keys from a ProLIF Fingerprint.
 
     Version-tolerant: reads the to_dataframe() MultiIndex columns and keeps the
     protein-residue + interaction levels of every detected (truthy) interaction.
+
+    The crystal CHAIN id is stripped from each residue (e.g. "ASP189.A" -> "ASP189").
+    Serine proteases share the conserved chymotrypsin numbering, so the S1/triad
+    residues (ASP189, SER195, GLY216/219, HIS57…) align across trypsin/thrombin/FXa
+    regardless of which chain letter a given crystal assigns. Without stripping, a
+    query docked into one receptor (chain A) could never match a reference solved in
+    another chain (e.g. thrombin chain H) — the Jaccard would be spuriously 0.
     """
     df = fp.to_dataframe()
     keys: set[str] = set()
@@ -93,7 +100,8 @@ def ifp_keys_from_fingerprint(fp) -> list[str]:
         col_t = col if isinstance(col, tuple) else (col,)
         if len(col_t) < 2:
             continue
-        prot_res, interaction = str(col_t[-2]), str(col_t[-1])
+        prot_res = str(col_t[-2]).rsplit(".", 1)[0]   # drop chain id
+        interaction = str(col_t[-1])
         try:
             on = bool(df[col].to_numpy().any())
         except Exception:  # noqa: BLE001
@@ -226,29 +234,57 @@ class ProLIFFallback(Fallback3D):
             classes = [c for c in self.supported_classes if self._has_reference(c)]
             if not classes:
                 return None            # no reference library yet → nothing to match
+            backend = self._backend()
+            if backend is None:
+                return None            # no docking backend → nothing to dock
             mol = self._embed_3d(smiles)
             if mol is None:
                 return None
             for cls in classes:
-                pose = self._dock(mol, cls)
-                if pose is None:
-                    continue
-                ifp = self._compute_ifp(pose, cls)
-                if not ifp:
-                    continue
-                sim, ref = self._match_reference(ifp, cls)
+                best_sim, best_ref = self._best_match(mol, cls, backend)
                 # Strict '>': a sim exactly at the threshold maps to score 0.0
                 # (_sim_to_score), a useless proposal that can only mislead a
                 # NO-ANSWER (empty-votes) case. Observed boundary artefact:
                 # caffeine docks into the trypsin S1 at sim≈0.60.
-                if sim > self.sim_threshold:
+                if best_sim > self.sim_threshold:
                     return FallbackProposal(
-                        cls, self._sim_to_score(sim), self.name,
-                        {"ifp_tanimoto": round(sim, 3), "ref_pdb": ref},
+                        cls, self._sim_to_score(best_sim), self.name,
+                        {"ifp_tanimoto": round(best_sim, 3), "ref_pdb": best_ref},
                     )
         except Exception:  # noqa: BLE001 — fallback must never break predict()
             return None
         return None
+
+    def _best_match(self, mol, target_class: str, backend: str) -> tuple[float, Optional[str]]:
+        """Dock the query into EACH reference's own receptor and return the best
+        (Jaccard, ref_pdb) over the class's actives.
+
+        Each reference IFP was computed in its own crystal frame (FXa, thrombin,
+        trypsin…); docking the query into a SINGLE shared receptor would put it in
+        the wrong frame and a non-trypsin peptidomimetic could never match its own
+        reference (observed: rivaroxaban self-matched at only 0.33 when forced into
+        trypsin 3PTB). So dock per reference receptor — query and reference then
+        share a frame. Distinct receptors are docked once each (cached).
+        """
+        best_sim, best_ref = 0.0, None
+        ifp_cache: dict[tuple[str, str], set[str]] = {}
+        for active in self._load_reference().get(target_class, {}).get("actives", []):
+            pdb_id = active.get("source_pdb")
+            lig_res = active.get("ligand_resname")
+            ref_keys = set(active.get("ifp_keys", []))
+            if not pdb_id or not lig_res or not ref_keys:
+                continue
+            cache_key = (pdb_id, lig_res)
+            if cache_key not in ifp_cache:
+                ifp_cache[cache_key] = self._dock_and_ifp(mol, pdb_id, lig_res, backend)
+            query = ifp_cache[cache_key]
+            union = len(query | ref_keys)
+            if union == 0:
+                continue
+            sim = len(query & ref_keys) / union
+            if sim > best_sim:
+                best_sim, best_ref = sim, pdb_id
+        return best_sim, best_ref
 
     # ── reference library ────────────────────────────────────────────────────
     def _load_reference(self) -> dict:
@@ -307,19 +343,19 @@ class ProLIFFallback(Fallback3D):
             pass
         return mol
 
-    def _prep_receptor(self, target_class: str) -> tuple[Optional[Path], Optional[Path]]:
-        """Return (PDBFixer-prepped receptor PDB, autobox-ligand PDB) for a class.
+    def _backend(self) -> Optional[str]:
+        """Resolve the docking executable (preferred → smina → gnina) or None."""
+        return (_find_backend(self.docking_backend)
+                or _find_backend("smina") or _find_backend("gnina"))
+
+    def _prep_receptor(self, pdb_id: str, lig_res: str) -> tuple[Optional[Path], Optional[Path]]:
+        """Return (PDBFixer-prepped receptor PDB, autobox-ligand PDB) for one PDB.
 
         The receptor is prepared with the SAME PDBFixer pass used to build the
         reference library (`build_prolif_reference._prep_protein_pdbfixer`), so the
         query-side IFP is computed against an identically-prepared protein and is
-        comparable to the reference IFPs.
+        comparable to that reference's IFP.
         """
-        dock = self._load_reference().get(target_class, {}).get("docking", {})
-        pdb_id = dock.get("receptor_pdb")
-        lig_res = dock.get("autobox_ligand_resname")
-        if not pdb_id or not lig_res:
-            return None, None
         pdb_path = _PDB_DIR / f"{pdb_id}.pdb"
         if not pdb_path.exists():
             return None, None
@@ -333,18 +369,21 @@ class ProLIFFallback(Fallback3D):
             mda.Universe(str(pdb_path)).select_atoms(f"resname {lig_res}").write(str(box))
         return rec, box
 
-    def _dock(self, mol, target_class: str):
-        """Dock the query into the class's reference receptor → best-pose RDKit mol."""
+    def _dock_and_ifp(self, mol, pdb_id: str, lig_res: str, backend: str) -> set[str]:
+        """Dock the query into one reference receptor and return its IFP key-set.
+
+        Query and reference share the receptor frame (same source_pdb), so the
+        returned key-set is directly Jaccard-comparable to that reference's keys.
+        Returns an empty set on any failure (docking / IFP) so the caller skips it.
+        """
         import subprocess
         import tempfile
+        import MDAnalysis as mda
+        import prolif as plf
         from rdkit import Chem
-        rec, box = self._prep_receptor(target_class)
+        rec, box = self._prep_receptor(pdb_id, lig_res)
         if rec is None:
-            return None
-        backend = (_find_backend(self.docking_backend)
-                   or _find_backend("smina") or _find_backend("gnina"))
-        if backend is None:
-            return None
+            return set()
         with tempfile.TemporaryDirectory() as td:
             lig_in = Path(td) / "lig.sdf"
             out = Path(td) / "out.sdf"
@@ -356,37 +395,16 @@ class ProLIFFallback(Fallback3D):
                    "-o", str(out)]
             subprocess.run(cmd, check=True, capture_output=True, timeout=900)
             if not out.exists():
-                return None
+                return set()
             poses = [m for m in Chem.SDMolSupplier(str(out), removeHs=False)
                      if m is not None]
-            return poses[0] if poses else None
-
-    def _compute_ifp(self, pose, target_class: str) -> set[str]:
-        """ProLIF interaction fingerprint of the docked pose vs the receptor."""
-        import MDAnalysis as mda
-        import prolif as plf
-        rec, _ = self._prep_receptor(target_class)
-        if rec is None:
-            return set()
-        prot = plf.Molecule.from_mda(mda.Universe(str(rec)).select_atoms("protein"))
-        lig = plf.Molecule.from_rdkit(pose)
-        fp = plf.Fingerprint()
-        fp.run_from_iterable([lig], prot, progress=False)
-        return set(ifp_keys_from_fingerprint(fp))
-
-    def _match_reference(self, ifp_keys, target_class: str) -> tuple[float, Optional[str]]:
-        """Max IFP Tanimoto (Jaccard) to the class's reference actives → (sim, ref_pdb)."""
-        query = set(ifp_keys)
-        best_sim, best_ref = 0.0, None
-        for active in self._load_reference().get(target_class, {}).get("actives", []):
-            ref = set(active.get("ifp_keys", []))
-            union = len(query | ref)
-            if union == 0:
-                continue
-            sim = len(query & ref) / union
-            if sim > best_sim:
-                best_sim, best_ref = sim, active.get("source_pdb")
-        return best_sim, best_ref
+            if not poses:
+                return set()
+            prot = plf.Molecule.from_mda(mda.Universe(str(rec)).select_atoms("protein"))
+            lig = plf.Molecule.from_rdkit(poses[0])
+            fp = plf.Fingerprint()
+            fp.run_from_iterable([lig], prot, progress=False)
+            return set(ifp_keys_from_fingerprint(fp))
 
     def _sim_to_score(self, sim: float) -> float:
         """Map IFP Tanimoto (>= threshold) to an FG-comparable score."""
