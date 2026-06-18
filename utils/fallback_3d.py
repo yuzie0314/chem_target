@@ -47,9 +47,26 @@ JSON at ``db/prolif_reference_ifp.json`` (gitignored — rebuild offline):
 from __future__ import annotations
 
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+
+def _find_backend(name: str) -> Optional[str]:
+    """Locate a docking executable: PATH, then <env>/Library/bin, then <env>/bin.
+
+    conda envs that aren't `activate`-d don't have Library/bin on PATH, so check
+    sys.prefix explicitly (where conda-forge smina/gnina land on Windows)."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for sub in ("Library/bin", "bin", "Scripts"):
+        for ext in (".exe", ""):
+            cand = Path(sys.prefix) / sub / f"{name}{ext}"
+            if cand.exists():
+                return str(cand)
+    return None
 
 import pandas as pd
 
@@ -267,7 +284,13 @@ class ProLIFFallback(Fallback3D):
         return mol
 
     def _prep_receptor(self, target_class: str) -> tuple[Optional[Path], Optional[Path]]:
-        """Split the cached reference PDB into receptor + autobox-ligand files."""
+        """Return (PDBFixer-prepped receptor PDB, autobox-ligand PDB) for a class.
+
+        The receptor is prepared with the SAME PDBFixer pass used to build the
+        reference library (`build_prolif_reference._prep_protein_pdbfixer`), so the
+        query-side IFP is computed against an identically-prepared protein and is
+        comparable to the reference IFPs.
+        """
         dock = self._load_reference().get(target_class, {}).get("docking", {})
         pdb_id = dock.get("receptor_pdb")
         lig_res = dock.get("autobox_ligand_resname")
@@ -276,13 +299,14 @@ class ProLIFFallback(Fallback3D):
         pdb_path = _PDB_DIR / f"{pdb_id}.pdb"
         if not pdb_path.exists():
             return None, None
-        rec = _PDB_DIR / f"{pdb_id}_receptor.pdb"
+        from utils.build_prolif_reference import _prep_protein_pdbfixer  # lazy
+        rec = _prep_protein_pdbfixer(pdb_path)
+        if rec is None:
+            return None, None
         box = _PDB_DIR / f"{pdb_id}_{lig_res}_box.pdb"
-        if not (rec.exists() and box.exists()):
+        if not box.exists():
             import MDAnalysis as mda
-            u = mda.Universe(str(pdb_path))
-            u.select_atoms("protein").write(str(rec))
-            u.select_atoms(f"resname {lig_res}").write(str(box))
+            mda.Universe(str(pdb_path)).select_atoms(f"resname {lig_res}").write(str(box))
         return rec, box
 
     def _dock(self, mol, target_class: str):
@@ -293,8 +317,8 @@ class ProLIFFallback(Fallback3D):
         rec, box = self._prep_receptor(target_class)
         if rec is None:
             return None
-        backend = (shutil.which(self.docking_backend)
-                   or shutil.which("smina") or shutil.which("gnina"))
+        backend = (_find_backend(self.docking_backend)
+                   or _find_backend("smina") or _find_backend("gnina"))
         if backend is None:
             return None
         with tempfile.TemporaryDirectory() as td:
