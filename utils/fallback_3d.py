@@ -237,7 +237,11 @@ class ProLIFFallback(Fallback3D):
                 if not ifp:
                     continue
                 sim, ref = self._match_reference(ifp, cls)
-                if sim >= self.sim_threshold:
+                # Strict '>': a sim exactly at the threshold maps to score 0.0
+                # (_sim_to_score), a useless proposal that can only mislead a
+                # NO-ANSWER (empty-votes) case. Observed boundary artefact:
+                # caffeine docks into the trypsin S1 at sim≈0.60.
+                if sim > self.sim_threshold:
                     return FallbackProposal(
                         cls, self._sim_to_score(sim), self.name,
                         {"ifp_tanimoto": round(sim, 3), "ref_pdb": ref},
@@ -263,11 +267,31 @@ class ProLIFFallback(Fallback3D):
         return bool(self._load_reference().get(target_class, {}).get("actives"))
 
     # ── pipeline steps (lazy heavy imports inside each) ───────────────────────
+    def _protonate_smiles(self, smiles: str) -> str:
+        """Protonate at pH 7.4 with the SAME OpenBabel model the reference builder
+        uses (``build_prolif_reference._protonate_ligand`` → AddHydrogens(.,.,7.4)),
+        so query and reference IFPs share ionization state — amidine/guanidine →
+        cationic (Cationic + HBDonor S1 keys), carboxylic acid → anionic. Without
+        this the neutral query loses the very Cationic/HBDonor keys that define the
+        serine-protease S1 match. Falls back to the input SMILES on any failure
+        (keeps the zero-regression invariant when OpenBabel is unavailable).
+        """
+        try:
+            from utils.build_prolif_reference import _setup_openbabel  # lazy
+            _setup_openbabel()
+            from openbabel import pybel  # lazy
+            m = pybel.readstring("smi", smiles)
+            m.OBMol.AddHydrogens(False, True, 7.4)  # (polar_only, correct_for_pH, pH)
+            out = m.write("smi").strip().split()
+            return out[0] if out else smiles
+        except Exception:  # noqa: BLE001 — protonation is best-effort
+            return smiles
+
     def _embed_3d(self, smiles: str):
-        """SMILES → 3D conformer (RDKit ETKDGv3 + MMFF, explicit H)."""
+        """SMILES → physiological-pH 3D conformer (protonate @ pH 7.4, ETKDGv3 + MMFF)."""
         from rdkit import Chem
         from rdkit.Chem import AllChem
-        mol = Chem.MolFromSmiles(smiles)
+        mol = Chem.MolFromSmiles(self._protonate_smiles(smiles))
         if mol is None:
             return None
         mol = Chem.AddHs(mol)
