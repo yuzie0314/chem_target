@@ -481,6 +481,66 @@ Adding a new Python-based FG detector (like Steroid):
 
 ---
 
+## 3D interaction-fingerprint fallback (ProLIF) — built, evaluated, **no accuracy gain (yet)**
+
+A structure-based second opinion was implemented to try to recover the functional-group (FG)
+layer's misses: embed → protonate at pH 7.4 → dock (smina) into each reference co-crystal's own
+receptor → ProLIF interaction fingerprint → Jaccard vs a library of serine-protease reference IFPs.
+It is fully wired (`utils/fallback_3d.py`, `utils/build_prolif_reference.py`) and **runs end-to-end**,
+but is **NOT registered into the prediction pipeline by default** — so the benchmark numbers above are
+the pure-FG result and are unchanged by it.
+
+**The machinery works** (positive controls, docked into the reference set):
+
+| Query | Best IFP Jaccard | Matched reference | Fires (sim > 0.6)? |
+|---|---|---|---|
+| benzamidine | 1.00 | 3PTB (trypsin) | ✅ |
+| rivaroxaban | 1.00 | 2W26 (factor Xa) | ✅ |
+| ibuprofen (negative control) | 0.25 | — | ❌ (correctly silent) |
+
+**But on the real benchmark misses it recovers nothing.** Docking all 7 serine-protease misses against
+the 9-co-crystal reference library (trypsin/thrombin/factor-Xa, incl. 4 non-benzamidine
+peptidomimetics: rivaroxaban, razaxaban-class, etc.):
+
+| Serine-protease miss | FG top-1 (score) | Confidence | Best SP IFP sim | Recovered? |
+|---|---|---|---|---|
+| CHEMBL103874 | carbonic anhydrase (6.14) | **high** | — (gate never consults fallback) | ❌ |
+| CHEMBL92615 | GPCR (4.30) | low | 0.50 | ❌ |
+| CHEMBL323583 | cytochrome P450 (2.50) | low | 0.60 | ❌ |
+| CHEMBL4108739 | nuclear receptor (2.38) | low | 0.33 | ❌ |
+| CHEMBL285285 | nuclear receptor (2.38) | low | 0.40 | ❌ |
+| CHEMBL1682691 | nuclear receptor (2.38) | low | 0.50 | ❌ |
+| CHEMBL291026 | nuclear receptor (2.38) | low | 0.50 | ❌ |
+
+**Net effect on accuracy: 0/7 recovered → no change (190/220 stays 190/220).**
+
+### Why it doesn't help (the drawbacks, with data)
+
+1. **Self-docking ≠ generalisation.** The positive controls score 1.0 only because they *are* in the
+   reference set (re-docking reproduces the crystal pose). The actual misses are different chemotypes;
+   docked into the reference receptors they reach only **0.33–0.60** Jaccard — they genuinely lack the
+   S1 Arg-mimetic anchor that defines the reference binding modes. This confirms (now structurally, not
+   just at the FG level) that these are **real structural misses, not a missing-pattern gap**.
+2. **The confidence gate can't reach confident-wrong misses.** 1 of the 7 (CHEMBL103874) is a *high-
+   confidence* wrong call (carbonic anhydrase, score 6.14); the gate only routes low/none-confidence
+   predictions, so the fallback is never even consulted for it.
+3. **Lowering the similarity threshold wouldn't fix it.** To overturn the current top-1, an IFP match
+   needs sim ≈ 0.72–0.82 (the proposal score must beat the standing FG score). The best miss reached
+   0.60. Dropping the threshold far enough to fire would (a) still not produce a score high enough to
+   flip the ranking and (b) start firing on negatives.
+4. **Cost is high.** Per-reference docking is ~9 docks/query (≈ 10–25 min per drug-sized molecule);
+   a full benchmark pass with the fallback registered is impractical without a cheaper pre-filter.
+
+### What it's good for
+
+The infrastructure is committed and de-risked, so the question "can a structure-based layer rescue FG
+misses?" is now answerable with data rather than blocked on tooling. It remains a sound approach for
+*chemotypes that share a binding mode with a reference* — the payoff needs a much broader reference
+library (and/or docking into the true target receptor, not a family proxy), not threshold tuning.
+Activate for experiments via `register_fallback_3d(ProLIFFallback())`.
+
+---
+
 ## Roadmap
 
 - [ ] HTML / PDF report for non-technical clients

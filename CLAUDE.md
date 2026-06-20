@@ -467,6 +467,17 @@ re-rank/merge contract tested.
 - **Still NOT auto-registered** (default hook = no-op stub) → predict/benchmark byte-identical
   (core 190/220 unchanged). Activate: `register_fallback_3d(ProLIFFallback())`. Regression surface = the
   41 low-confidence HITS (overrides must not break them).
+- **⚠ EMPIRICAL RESULT (2026-06-18) — recovers 0/7 serine-protease misses → NO accuracy gain.** Ran all
+  7 SP misses through per-reference docking vs the 9-co-crystal library: best IFP Jaccard only 0.33–0.60
+  (CHEMBL323583 0.60, two at 0.50, …), all below the 0.6 fire threshold; 1 (CHEMBL103874) is high-conf
+  wrong (CA 6.14) so the gate never consults the fallback. Even firing wouldn't flip them — overturning
+  the standing FG top-1 needs sim≈0.72–0.82. The positive controls (benzamidine/rivaroxaban →1.0) score
+  high only because they ARE in the reference set (self-docking); the real misses are different
+  chemotypes that don't reproduce a reference binding mode. **This confirms structurally that the 7 SP
+  misses are real structural misses, not a missing-pattern gap.** Threshold-lowering won't help (scores
+  too low + would fire on negatives). Documented in README "3D interaction-fingerprint fallback" section.
+  Payoff needs a far broader reference library and/or docking into the TRUE target receptor (not a family
+  proxy), not tuning. Do NOT register it expecting a benchmark gain.
 - **`_find_backend()`**: smina 2020.12.10 lives at `<env>/Library/bin/smina.exe`; `shutil.which` misses
   it without `conda activate`, so `_find_backend` also probes `sys.prefix`/{Library/bin,bin,Scripts}.
 
