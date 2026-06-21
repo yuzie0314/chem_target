@@ -242,47 +242,16 @@ conda environment name: `chem\_target`
 - **Core 11-class Top-1: 190/220 = 86.4%   Top-3: 197/220 = 89.5%** (mechanistic classes) — current best, branch `dev/validation`.
 - Blind-spot rule-backed (extended set): MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20.
 - The rule layer is complete; ProLIF 3D-fallback runs end-to-end but is NOT auto-registered (zero regression) and recovers 0/7 SP misses (see the 3D-fallback section).
-- Per-class detail is in the table below; the "what's built" checklist lives in `git log` (the rules/decisions that matter are in the sections that follow — mechanistic_weight, conditional rules, negative results, structural limits).
+- Per-class detail → `doc/benchmark_results.md`; the "what's built" checklist lives in `git log` (the rules/decisions that matter are in the sections that follow — mechanistic_weight, conditional rules, negative results, structural limits).
 
 ---
 
-\## Benchmark per-class results (current best, branch: dev/validation)
+\## Benchmark per-class results
 
-| Class | Top-1 | Top-3 | Notes |
-|---|---|---|---|
-| GPCR | 20/20 = 100% | 20/20 | ✅ |
-| HDAC | 20/20 = 100% | 20/20 | ✅ |
-| Carbonic anhydrase | 20/20 = 100% | 20/20 | ✅ |
-| Tubulin | 19/20 = 95% | 19/20 | -1 GS-9256 (thiazole+ether → CYP rule; profile indistinguishable from ritonavir-class) |
-| Nuclear receptor | 17/20 = 85% | 20/20 | +1 from Guanidine FG IDF shift; remaining: Acylsulfonamide→tubulin + structural |
-| Serine protease | 13/20 = 65% | 13/20 | +1 by Guanidine FG (CHEMBL353760, arginine-mimetic→SP). 7 remaining peptidomimetics have NO amidine/guanidine S1 group (structural) |
-| COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
-| Kinase | 18/20 = 90% | 18/20 | +4 by pyrimidine router (mono-pyrimidine→kinase, branch 3); earlier +6 αβunsat+Sulfonamide. 2 remaining: 1 strong-GPCR (CHEMBL5270693), 1 Steroid |
-| CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural. Pyrimidine guard added (no CYP450 TP has pyrimidine) |
-| Adenosine receptor | 12/20 = 60% | 12/20 | +7 by pyrimidine router (fused-azolo-diazine→adenosine, branch 2). 8 remaining: no purine-mimetic core (Phenol/Halogen sparse, or Nitrile/Steroid) |
-| mTOR | 17/20 = 85% | 17/20 | Fixed +16 by morpholino-diazine motif (16 ATP-competitive TORKinibs); +SIROLIMUS by macrolide rule. 3 remaining have no morpholine (SAPANISERTIB, CHEMBL3645910, CHEMBL3681183) |
-| COMT | 8/20 = 40% | — | nitrocatechol (entacapone/opicapone) via existing Phenol+Catechol; other 12 = research series w/o nitrocatechol (pChEMBL-bias) |
-| MAO | 2/20 = 10% | — | propargylamine (clorgiline) via MAO warhead rule; 18 = single research series (Sec/Tert amine, no MAO pharmacophore) |
-| cysteine protease | 12/20 = 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via Nitrile+Amide rule; zero collision. 8 remaining lack nitrile |
-| topoisomerase | 5/20 = 25% | — | anthracyclines (doxorubicin/daunorubicin/epirubicin/idarubicin/nemorubicin) via Anthraquinone voting FG (mw=2.5, sole topo annotator → IDF≈3.7). 15 = research series w/o intercalator core |
-| xanthine oxidase | 0/20 | — | pChEMBL-bias: research series (Phenol+Amide+Pyrimidine), no allopurinol/febuxostat pharmacophore; pyrimidine→kinase collision. Structural limit |
-
-**Note on the 13-class extended set (260 compounds):** MAO + COMT were added 2026-06-15 with
-*correct* ChEMBL target IDs (MAO=CHEMBL1951/2039, COMT=CHEMBL2023). Their low scores reflect a
-**pChEMBL-sampling bias**: the top-20 highest-affinity ChEMBL compounds for these targets are modern
-research analogs that lack the classic covalent pharmacophores (propargylamine, nitrocatechol) the
-marketed drugs carry — not a rule gap. Adding the warhead rule cannot capture analogs that don't
-carry the warhead. The other 5 blind-spot classes (PDE/topoisomerase/ribosome/XO/cysteine protease)
-remain un-added; see Next tasks.
-
-✅ **Data bug FIXED (2026-06-15):** `run_stp_comparison.py` previously had a local `_TARGET_CLASS_MAP`
-with *wrong* ChEMBL IDs for the 7 blind-spot classes (e.g. MAO→CHEMBL2828 returned DARUNAVIR,
-topoisomerase→CHEMBL3952 returned the opioid JDTIC). It now `from run_benchmark import TARGET_CLASS_MAP`
-— **single source of truth**, so the two can never diverge again. `generate_comparison` also restricts
-to the true compound intersection (`restrict_names`), keeping the head-to-head fair after benchmark
-expansion. NOTE: the cached `stp_raw.csv` still holds the old mislabelled STP rows for those 7 classes
-(fetched with the bad map); re-query STP to refresh them — but the published 220/11-class fair
-comparison never used them, so it is unaffected.
+Full per-class table + Notes (the per-class reasoning / structural-limit provenance), the
+13-class extended-set pChEMBL-bias note, and the run_stp_comparison data-bug fix → **`doc/benchmark_results.md`**.
+The AI-critical "do NOT" facts are also distilled in "Known structural limitations" + "Confirmed
+negative results" below.
 
 ---
 
@@ -396,92 +365,25 @@ gitignored). Identities verified via unified map.
 **Tier 3 (deprioritised):** PDE (too generic + collisions), ribosome (only 3 compounds + hard
 aminoglycosides). Likely structural limits like adenosine/serine protease.
 
-\### 3D-fallback layer (skeleton DONE, real models pending)
+\### 3D-fallback layer — runs end-to-end, but DO NOT register for a benchmark gain
 
-`utils/target_predictor.py`: `assess_confidence()` + `register_fallback_3d()` +
-`_finalize_with_fallback()`. Predictions get a `confidence` tag (high/low/none) from
-observable signal only (top1 score < 3.0 OR top1−top2 margin < 0.75 → low; empty votes → none).
-Low/none route to a pluggable 3D hook; default `_stub_fallback_3d` returns None → **zero
-regression** (verified: core 11 stays 188/220). Plug real models via `register_fallback_3d`.
+Full design / builder / tune-list → **`doc/3d_fallback.md`**; user-facing write-up → README
+"3D interaction-fingerprint fallback". The load-bearing rules:
 
-**Gate-selectivity finding (320-cpd benchmark)** — the confidence gate is SAFE but PARTIAL:
-- Routes 42/105 misses (40%); also flags 41/215 hits (would be at risk only if a real model overrides).
-- **63/105 misses are HIGH confidence (FG confidently wrong) → NOT reachable by the gate**:
-  NO-ANSWER 39 (e.g. XO→kinase via pyrimidine), FALSE-POS 24 (e.g. COMT loses to CA/NR at score 6+).
-- Implication: a confidence gate alone cannot trigger the FALSE-POSITIVE re-rank cases (the wrong
-  winner is *strong*). Reaching the 63 confident-wrong misses needs a parallel 3D path + meta-reconciler
-  that may override high-confidence FG calls — which carries regression risk and must be validated hard.
-  Method map (from failure-mode analysis): shape/ProLIF = retrieval for NO-ANSWER; Gnina rescore =
-  re-rank for FALSE-POS (but needs an always-on or top-K trigger, not the confidence gate).
-
-**✅ ProLIF fallback RUNS END-TO-END (`utils/fallback_3d.py`, 2026-06-18)** — the old OpenBabel
-protein-prep blocker is RESOLVED and the serine-protease reference library is BUILT. Pipeline
-(`ProLIFFallback`, all implemented, not stubbed):
-`_embed_3d` (**pH 7.4 protonation via `_protonate_smiles` — same OpenBabel model the builder uses;
-amidine/guanidine → cationic, COOH → anionic** — then RDKit ETKDGv3+MMFF) → `_best_match`, which docks
-the query into **EACH reference's own receptor** (`_dock_and_ifp`: smina subprocess, `--autobox_ligand`,
-`--seed 0`; ProLIF Fingerprint vs that receptor) and takes the max Jaccard. `build_override()`
-re-rank/merge contract tested.
-- **Per-reference docking, NOT a single shared receptor**: each reference IFP lives in its own crystal
-  frame (trypsin/thrombin/FXa). Docking the query into one fixed receptor put non-trypsin
-  peptidomimetics in the wrong frame — rivaroxaban self-matched at only **0.33**. After per-reference
-  docking (redock into 2W26 FXa) rivaroxaban self-matches at **1.0**; benzamidine→3PTB **1.0**;
-  ibuprofen (negative) **0.25** → no false positive. Cost: N docks/query (~50s each; ~20 min for the
-  9-ref SP library). Distinct receptors are docked once each (cached per query).
-- **IFP keys are CHAIN-STRIPPED** (`ifp_keys_from_fingerprint` → `rsplit('.',1)[0]`): SP family shares
-  chymotrypsin numbering (ASP189/SER195/GLY216/219/HIS57 align across trypsin/thrombin/FXa), so dropping
-  the crystal chain id makes references cross-PDB comparable. Key form = **"RESNAMERESNUM.Interaction"**
-  (e.g. `ASP189.Cationic`) shared by builder and fallback — NOT raw bitvectors (unaligned across mols).
-- `propose()` swallows all errors → None; **strict `sim > threshold`** (a boundary `sim==threshold`
-  maps to score 0.0, a useless proposal — caffeine docks the trypsin S1 at ≈0.60). Heavy deps lazy.
-- **Still NOT auto-registered** (default hook = no-op stub) → predict/benchmark byte-identical
-  (core 190/220 unchanged). Activate: `register_fallback_3d(ProLIFFallback())`. Regression surface = the
-  41 low-confidence HITS (overrides must not break them).
-- **⚠ EMPIRICAL RESULT (2026-06-18) — recovers 0/7 serine-protease misses → NO accuracy gain.** Ran all
-  7 SP misses through per-reference docking vs the 9-co-crystal library: best IFP Jaccard only 0.33–0.60
-  (CHEMBL323583 0.60, two at 0.50, …), all below the 0.6 fire threshold; 1 (CHEMBL103874) is high-conf
-  wrong (CA 6.14) so the gate never consults the fallback. Even firing wouldn't flip them — overturning
-  the standing FG top-1 needs sim≈0.72–0.82. The positive controls (benzamidine/rivaroxaban →1.0) score
-  high only because they ARE in the reference set (self-docking); the real misses are different
-  chemotypes that don't reproduce a reference binding mode. **This confirms structurally that the 7 SP
-  misses are real structural misses, not a missing-pattern gap.** Threshold-lowering won't help (scores
-  too low + would fire on negatives). Documented in README "3D interaction-fingerprint fallback" section.
-  Payoff needs a far broader reference library and/or docking into the TRUE target receptor (not a family
-  proxy), not tuning. Do NOT register it expecting a benchmark gain.
-- **`_find_backend()`**: smina 2020.12.10 lives at `<env>/Library/bin/smina.exe`; `shutil.which` misses
-  it without `conda activate`, so `_find_backend` also probes `sys.prefix`/{Library/bin,bin,Scripts}.
-
-**Reference-library builder (`utils/build_prolif_reference.py check|build`)**: builds
-db/prolif_reference_ifp.json from PDB **co-crystals** (real poses → ProLIF IFP; no docking on the
-reference side). **Current library = 9 serine-protease co-crystals**: 3PTB/BEN, 1OYT/FSN, 1DWD/MID,
-2ZFF/53U, 1F0R/815 + 4 non-benzamidine peptidomimetic FXa (**2W26/rivaroxaban, 2P16/GG2, 2RA0/JNJ,
-2J34/GS6**) for the 8 SP misses with no Arg-mimetic S1 anchor.
-- **PDBFixer protein prep is crash-resilient**: `_pdbfixer_worker` runs in a **subprocess** (so a native
-  `addMissingAtoms()` segfault on a pathological structure — e.g. FXa 2W26 — can't kill the batch); the
-  parent retries WITHOUT addMissingAtoms (skipped atoms are surface side chains, not the S1/triad). This
-  recovered 1OYT and 2W26. Ligand still protonated standalone via OpenBabel (`_protonate_ligand`).
-- **Env (2026-06-18)**: rdkit 2023.09.6 + ProLIF 2.1.0 + MDAnalysis 2.9.0 + pdbfixer + openmm + requests
-  + **smina 2020.12.10** all installed. Interactive shell can't `conda activate` — run via the full path
-  `C:\Users\User\miniconda3\envs\chem_target\python.exe`. db/prolif_pdb/ + db/prolif_reference_ifp.json
-  gitignored (rebuild offline: `python utils/build_prolif_reference.py build --target "serine protease"`).
-
-**3D-fallback tune list (now that it runs):**
-- **Per-reference docking cost**: N docks/query is the dominant cost. Consider top-K reference receptors,
-  parallelising docks, or a cheaper pre-filter (shape) before docking.
-- **Receptor prep**: smina is fed a PDBFixer-prepped PDB (no PDBQT). For accuracy add meeko /
-  `prepare_receptor` → PDBQT (charges, rigid/flex). Same for the autobox ligand.
-- **Confidence gate thresholds** (`target_predictor`): `_CONF_MIN_TOP1_SCORE=3.0`, `_CONF_MIN_MARGIN=0.75`
-  — routes 40% of misses + flags 41 hits; tune vs the hit/miss cross-tab.
-- **ProLIF similarity→score** (`ProLIFFallback`): `sim_threshold=0.6`, `score_scale=8.0` — FALSE-POS
-  recovery needs sim≈0.9+ to beat score-6 winners; NO-ANSWER ≈0.7. Known limit: a query docked into a
-  non-native receptor may not reproduce the crystal pose, so some peptidomimetics still land < 0.6
-  (lowering the threshold risks false positives — see ibuprofen 0.25).
-- **Reference set coverage**: 9 SP co-crystals; add more non-benzamidine peptidomimetic complexes so the
-  remaining SP misses have a near neighbour.
-- **Docking determinism**: smina `--seed 0` set; consider `--num_modes>1` + best-IFP-over-poses, tune
-  `--exhaustiveness`/`--autobox_add`.
-- **Override policy**: `build_override` boosts/inserts one proposal; for FALSE-POS re-rank at scale,
-  consider top-K docking + a meta-reconciler (Option 2) rather than the single low-conf gate.
+- **Confidence gate** (`target_predictor.assess_confidence` + `register_fallback_3d` +
+  `_finalize_with_fallback`): low/none-confidence predictions route to a pluggable 3D hook; default
+  `_stub_fallback_3d` → None → **zero regression**. The gate is PARTIAL — 63/105 misses are
+  high-confidence-wrong and unreachable by it (needs a parallel path + meta-reconciler, regression risk).
+- **ProLIF fallback** (`utils/fallback_3d.py`) is fully implemented and runs end-to-end (smina +
+  PDBFixer + pH 7.4 protonation + per-reference docking + chain-stripped IFP keys; 9-co-crystal SP
+  reference library). **It is NOT auto-registered** — predict/benchmark are byte-identical (core
+  190/220 unchanged).
+- **⚠ EMPIRICAL: recovers 0/7 SP misses → NO accuracy gain (2026-06-18).** Best IFP Jaccard for the real
+  misses is 0.33–0.60 (below the 0.6 fire threshold; flipping top-1 needs ≈0.72–0.82). Positive controls
+  (benzamidine/rivaroxaban →1.0) only score high because they ARE in the reference set (self-docking).
+  Confirms the 7 SP misses are real structural misses, not a pattern gap. **Do NOT register
+  `ProLIFFallback` expecting a benchmark gain**; threshold-lowering won't help (fires on negatives).
+  Payoff needs a far broader reference library / docking into the TRUE target receptor — see doc.
 
 \### Other improvements
 
