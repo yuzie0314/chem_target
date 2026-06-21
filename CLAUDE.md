@@ -237,42 +237,12 @@ conda environment name: `chem\_target`
 
 
 
-\## Current status (2026-06-15)
+\## Current status (headline)
 
-| Component | Status |
-|---|---|
-| conda env + rdkit + openbabel | ✅ Done |
-| 42 FG SMARTS + Steroid Python = 43 total (`constants/fg_smarts.py`) | ✅ Done |
-| `db/fg_database.json` (43 entries incl. …+Pyrimidine+Triazine+Anthraquinone+Guanidine, mechanistic_weight) | ✅ Done |
-| Serine protease Guanidine FG (arginine-mimetic → SP, mw 3.0) | ✅ 13/20 (+1, zero regression) |
-| `db/fg_residue_table.csv` (BioLiP rebuild, 42 SMARTS + Steroid columns) | ✅ Done |
-| `db/residue_3d_poses.json` + `db/local_env/*.sdf` | ✅ Done |
-| `utils/target_predictor.py` (IDF × mechanistic_weight) | ✅ Done |
-| `utils/report_generator.py` (HTML individual + batch) | ✅ Done |
-| `run_benchmark.py` (11-class × 20-compound curated) | ✅ Done |
-| **Core 11-class Top-1: 190/220 = 86.4%** (mechanistic classes) | ✅ Current best |
-| **Core 11-class Top-3: 197/220 = 89.5%** | ✅ Current best |
-| Blind-spot rule-backed: MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20 | ✅ |
-| MAO covalent-warhead rule (Propargylamine/Hydrazine) | ✅ Done |
-| COMT (nitrocatechol via existing Phenol+Catechol) | ✅ 8/20 (pChEMBL-bias limited) |
-| Cysteine protease nitrile-warhead rule (Nitrile+Amide, gated) | ✅ 12/20 (zero collision) |
-| Topoisomerase Anthraquinone voting FG (anthracyclines) | ✅ 5/20 (mw=2.5→topo) |
-| CYP450 conditional motif scoring (azole rule, Thiazole added, Pyrimidine guard) | ✅ Done |
-| Negative constraint rules (Hydroxamate/Thiol/Acylsulfonamide + fused-azolo-diazine → suppress CYP450) | ✅ Done |
-| COX indole-sulfonamide motif | ✅ Done |
-| mTOR macrolide conditional motif (rapalog) | ✅ Done |
-| **Pyrimidine router** (mutually-exclusive: morpholino→mTOR / fused-azolo→adenosine / mono→kinase) | ✅ Done |
-| Adenosine receptor Purine bonus | ✅ Done |
-| Kinase α,β-unsat carbonyl covalent warhead bonus | ✅ Done |
-| Thiazole SMARTS + BioLiP table rebuild | ✅ Done |
-| Benzimidazole SMARTS (scaffold detection only, no target votes) | ✅ Done |
-| Morpholine + Pyrimidine + Triazine SMARTS (scaffold markers, no target votes) | ✅ Done |
-| `_detect_fused_azolo_diazine` Python detector (routing-only, not in fg_database → no IDF impact) | ✅ Done |
-| FG-confidence tiering + 3D-fallback routing skeleton (stub, zero-regression) | ✅ Done (stub) |
-| 方案 4 fused-N core: azolo-diazine detector (functional, +7) + Quinazoline/Pyrrolopyrimidine/Pyridopyrimidine/Benzoxazole (annotation-only) | ✅ Done |
-| Input formats: CSV + SDF(RDKit) + MOL2(OpenBabel) + SMI + InChI — `read_file` dispatch, wired in main.py fg/predict | ✅ Done |
-| 3D shape descriptors (`utils/shape_descriptors.py`: NPR1/NPR2, Rg, asphericity…) — opt-in `predict --shape` | ✅ Done (informational) |
-| ProLIF 3D-fallback end-to-end (smina + PDBFixer + pH7.4 protonation + per-reference docking + chain-stripped IFP; 9-co-crystal SP lib) — NOT auto-registered → zero regression | ✅ Done (runs; opt-in) |
+- **Core 11-class Top-1: 190/220 = 86.4%   Top-3: 197/220 = 89.5%** (mechanistic classes) — current best, branch `dev/validation`.
+- Blind-spot rule-backed (extended set): MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20.
+- The rule layer is complete; ProLIF 3D-fallback runs end-to-end but is NOT auto-registered (zero regression) and recovers 0/7 SP misses (see the 3D-fallback section).
+- Per-class detail is in the table below; the "what's built" checklist lives in `git log` (the rules/decisions that matter are in the sections that follow — mechanistic_weight, conditional rules, negative results, structural limits).
 
 ---
 
