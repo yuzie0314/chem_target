@@ -1,0 +1,5 @@
+outs:
+- md5: 77ff1d52b28615c93abe6fb65555633d
+  size: 429908
+  hash: md5
+  path: ccd_smiles_cache.json

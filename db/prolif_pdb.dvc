@@ -1,0 +1,6 @@
+outs:
+- md5: 6c70488918f7429fda2cf55010a3dc18.dir
+  size: 6033545
+  nfiles: 27
+  hash: md5
+  path: prolif_pdb
