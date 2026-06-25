@@ -497,7 +497,8 @@ def _empty_result(row: dict, warning: str) -> dict:
 
 # ── Phase 3: Report ───────────────────────────────────────────────────────────
 
-def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
+def generate_report(results_csv: Path, results_dir: Path, mode: str,
+                    log_mlflow: bool = False) -> None:
     """Compute accuracy metrics and save per-class summary + plain-text report."""
     import pandas as pd
 
@@ -660,6 +661,23 @@ def generate_report(results_csv: Path, results_dir: Path, mode: str) -> None:
     print(f"\nReport saved: {report_path}")
     print(f"Summary CSV:  {summary_csv}")
 
+    # ── Optional: record this run to MLflow (opt-in, zero-impact otherwise) ───
+    if log_mlflow:
+        from utils.mlflow_tracker import log_benchmark_run
+        log_benchmark_run(
+            mode=mode,
+            n_all=n_all,
+            n_valid_fg=n_valid_fg,
+            top1_all=int(top1_all),
+            top3_all=int(top3_all),
+            mrr_all=float(mrr_all),
+            macro_f1=float(macro_k1["f1"]),
+            weighted_f1=float(wmacro_k1["f1"]),
+            cls_df=cls_df,
+            report_path=report_path,
+            summary_path=summary_csv,
+        )
+
 
 # ── I/O helpers ───────────────────────────────────────────────────────────────
 
@@ -695,6 +713,10 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--mode", choices=["curated", "limit"], default="curated",
         help="Benchmark mode (default: curated)",
+    )
+    common.add_argument(
+        "--mlflow", action="store_true", default=False,
+        help="Record this run's metrics to the local MLflow store (opt-in).",
     )
 
     # download
@@ -781,7 +803,8 @@ def main() -> None:
                   file=sys.stderr)
             sys.exit(1)
         print(f"\n=== PHASE: REPORT ({mode}) ===")
-        generate_report(results_csv, results_dir, mode)
+        generate_report(results_csv, results_dir, mode,
+                        log_mlflow=getattr(args, "mlflow", False))
 
 
 if __name__ == "__main__":
