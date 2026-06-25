@@ -54,12 +54,17 @@ chem_target/
 │   ├── db_updater.py          # PubChem/ChEMBL → fg_database.json
 │   ├── io_handler.py          # CSV/SDF input parsing
 │   ├── report_generator.py    # HTML individual + batch reports
+│   ├── mlflow_tracker.py      # Opt-in MLflow logging (SQLite store) — lazy import, no-op by default
 │   └── visualizer.py          # RDKit SVG output
 ├── data/           # User input files
 ├── output/         # Generated output — CSV, SVG, HTML, reports
-├── run_benchmark.py   # 11-class × 20-compound benchmark pipeline
+├── run_benchmark.py   # 11-class × 20-compound benchmark pipeline (--mlflow opt-in)
+├── backfill_mlflow.py # One-off: backfill pre-DVC milestones as reconstructed MLflow runs
 └── main.py         # Entry point only. Thin. No logic here.
 ```
+
+DVC-tracked db artifacts (not in git, see "Reproducibility" below): `db/BioLiP_nr.txt.gz`,
+`db/local_env/`, `db/prolif_pdb/`, `db/residue_3d_poses.json`, `db/ccd_smiles_cache.json`.
 
 **Never put constants inside logic files.**
 **Never put logic inside main.py.**
@@ -211,11 +216,52 @@ requests       # API calls to PubChem / ChEMBL
 
 matplotlib     # Plotting (future)
 
+dvc            # Data version control for large db/ artifacts
+
+mlflow         # Benchmark experiment tracking (opt-in)
+
 ```
 
 
 
 conda environment name: `chem\_target`
+
+
+
+\---
+
+
+
+\## Reproducibility: DVC + MLflow
+
+
+
+**DVC (local cache, no remote yet)** — 5 large/binary `db/` artifacts are
+DVC-tracked, not in git (git holds only the `.dvc` pointer files):
+`BioLiP_nr.txt.gz` (14M), `local_env/` (7.9M), `prolif_pdb/` (5.9M),
+`residue_3d_poses.json` (1.9M), `ccd_smiles_cache.json` (420K).
+Small out-of-box artifacts stay in git (`fg_database.json`,
+`fg_residue_table.csv`, `target_class_aliases.json`, `prolif_reference_ifp.json`).
+`dvc status` to check; `dvc checkout` to restore working copies from cache.
+**No off-machine remote yet** → local cache is the only copy of the
+non-regenerable data; add a `dvc remote` for backup before relying on it.
+**No `dvc.yaml` pipeline** (regeneration scripts are network-bound /
+non-deterministic — deliberately skipped per "don't over-engineer").
+
+**MLflow (opt-in, local SQLite store)** — `utils/mlflow_tracker.py` logs to
+`mlflow.db` + `mlartifacts/` (both gitignored; MLflow 3 retired the file store).
+- `python run_benchmark.py report --mlflow` (or `all --mlflow`) records the run:
+  full-16-class + **core-11-subset** Top-1/Top-3, per-class Top-1, MRR,
+  macro/weighted F1, git SHA/dirty, + report & summary as artifacts.
+  Default (no flag) is byte-identical — mlflow is never imported unless asked.
+- `core11_*` metrics = the headline 190/220 basis; plain `top1_acc` on the live
+  run is the wider 320/16-class basis (do NOT compare the two series directly).
+- `python backfill_mlflow.py` = one-off; 17 pre-DVC milestones (59.1%→86.4%)
+  reconstructed from commit messages, tagged `reconstructed=true`. **Run once
+  only** (re-running duplicates; clear `mlflow.db` first). Pre-DVC dataset
+  snapshots are GONE (gitignored + overwritten), so older points are
+  reconstructed, not rerunnable — the first fully reproducible run is HEAD.
+- View: `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 
 
 
