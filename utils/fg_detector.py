@@ -306,21 +306,25 @@ def detect_smarts_table(compounds: dict[str, str]) -> pd.DataFrame:
     """
     rows: dict[str, dict[str, int]] = {}
 
+    # Parse each SMILES once (avoids O(n_fg × n_compounds) re-parsing).
+    mols: dict[str, Chem.Mol | None] = {
+        comp_name: Chem.MolFromSmiles(smiles)
+        for comp_name, smiles in compounds.items()
+    }
+
     # SMARTS-based FGs
     for fg_name, pattern in _SMARTS_PATTERNS.items():
-        row: dict[str, int] = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = len(mol.GetSubstructMatches(pattern)) if mol else 0
-        rows[fg_name] = row
+        rows[fg_name] = {
+            comp_name: len(mol.GetSubstructMatches(pattern)) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     # Python-based FGs (e.g. Steroid) — count is 0 or 1
     for fg_name, detector in _PYTHON_DETECTORS.items():
-        row = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = int(detector(mol)) if mol else 0
-        rows[fg_name] = row
+        rows[fg_name] = {
+            comp_name: int(detector(mol)) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     df = pd.DataFrame(rows).T
     df.index.name = "fg_name"
@@ -357,12 +361,17 @@ def detect(compounds: dict[str, str]) -> pd.DataFrame:
     """
     rows: dict[str, dict[str, int]] = {}
 
+    # Parse each SMILES once (avoids O(n_fg × n_compounds) re-parsing).
+    mols: dict[str, Chem.Mol | None] = {
+        comp_name: Chem.MolFromSmiles(smiles)
+        for comp_name, smiles in compounds.items()
+    }
+
     for fg_code, fg_func in _FG_FUNCTIONS.items():
-        row: dict[str, int] = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = fg_func(mol) if mol else 0
-        rows[fg_code] = row
+        rows[fg_code] = {
+            comp_name: fg_func(mol) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     df = pd.DataFrame(rows).T
     df.index.name = "fg_code"

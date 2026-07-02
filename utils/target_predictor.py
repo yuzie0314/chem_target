@@ -883,6 +883,13 @@ def predict(
           residue_scores     (pd.DataFrame)  — residue | residue_name | score | contributing_fgs
           target_class_votes (pd.DataFrame)  — target_class | score | votes | evidence_fgs
           warning            (str | None)    — set on SMILES parse failure or missing table
+
+    NOTE — residue_scores is an INDEPENDENT, informational output.  It is NOT an
+    input to target-class ranking: ``target_class_votes`` is computed purely from
+    ``fgs_detected`` × fg_database.json (see predict_target_classes).  The two
+    outputs share only the detected-FG list, so the BioLiP FG×residue table does
+    not influence which target class is predicted.  (Integrating the residue
+    signal into the decision is an open design question — see the review notes.)
     """
     result: dict = {
         "smiles": smiles,
