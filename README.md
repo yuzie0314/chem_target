@@ -144,8 +144,20 @@ Outputs saved to `output/benchmark/`:
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Core 11 mechanistic classes (2026-06-16)** | **220** | **86.4% (190/220)** | **89.5% (197/220)** |
+| **Core 11 mechanistic classes — TUNING set (2026-06-16)** | **220** | **86.4% (190/220)** | **89.5% (197/220)** |
 | + blind-spot rule-backed (MAO, COMT, cysteine protease, topoisomerase) | 300 | 72.3% (217/300) | — |
+| **Core 11 — HELD-OUT (limit set, tuning compounds removed)** | **936** | **62.0% (580/936)** | — |
+
+> ⚠️ **Read the two core-11 rows together.** Every conditional rule in
+> `utils/target_predictor.py` was tuned against the *curated* 20-per-class set,
+> so **86.4% is a resubstitution (tuning-set) number — an upper bound, not an
+> estimate of real-world accuracy.** Scoring the identical model on a broader
+> held-out sample (the frozen `limit` set with the curated tuning compounds
+> removed) gives **62.0%** — a **+24.4-point overfitting gap**. The drop is
+> concentrated in the hand-tuned classes (CYP450 95→28%, serine protease
+> 65→29%, COX 75→38%, tubulin 95→41%); classes carried by genuinely specific
+> pharmacophores generalise (carbonic anhydrase 100→95%, GPCR 100→93%).
+> Reproduce with `python eval_holdout.py`.
 
 Per-class (curated, 20 compounds each):
 
