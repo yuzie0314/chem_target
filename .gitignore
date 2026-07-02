@@ -35,8 +35,13 @@ data/*.mol2
 data/*.sdf
 !data/test.sdf
 
-# Benchmark downloads — regenerate with run_benchmark.py download
-data/benchmark/
+# Benchmark downloads — regenerate with run_benchmark.py download.
+# EXCEPTION: freeze the curated ground-truth set (compounds.csv) in git so the
+# headline accuracy is reproducible and auditable. The SDF/ dir stays ignored
+# (regenerable from the SMILES column). Everything else under benchmark/ ignored.
+data/benchmark/**
+!data/benchmark/curated/
+!data/benchmark/curated/compounds.csv
 output/benchmark/
 
 # Temporary validation/test scripts
