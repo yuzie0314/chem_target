@@ -42,6 +42,10 @@ data/*.sdf
 data/benchmark/**
 !data/benchmark/curated/
 !data/benchmark/curated/compounds.csv
+# Also freeze the broader `limit` set: it serves as the held-out generalisation
+# set (limit minus the curated tuning compounds) — see eval_holdout.py.
+!data/benchmark/limit/
+!data/benchmark/limit/compounds.csv
 output/benchmark/
 
 # Temporary validation/test scripts
