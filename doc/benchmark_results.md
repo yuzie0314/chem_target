@@ -6,7 +6,12 @@ live in `CLAUDE.md`; the public-facing summary is in `README.md`. This file is t
 full developer reference (the "Notes" carry the per-class reasoning and the
 structural-limit provenance behind each score).
 
-**Core 11-class Top-1: 190/220 = 86.4%   Top-3: 197/220 = 89.5%** (current best).
+**Core 11-class Top-1 (TUNING set): 185/220 = 84.1%** (2026-07-03, after the
+de-overfitting pass). ⚠️ This is a **resubstitution** number — the rules were
+tuned on this exact set. On a pure zero-overlap held-out set it is **585/936 =
+62.5%** (`python eval_holdout.py`; see README "Reducing overfitting"). Was
+190/220 = 86.4% before removing the ID-tuned CYP450 aryl-halide rules
+(−5 CYP450 tuning, +0 held-out).
 
 ## Per-class (curated, 20 compounds each)
 
@@ -20,12 +25,12 @@ structural-limit provenance behind each score).
 | Serine protease | 13/20 = 65% | 13/20 | +1 by Guanidine FG (CHEMBL353760, arginine-mimetic→SP). 7 remaining peptidomimetics have NO amidine/guanidine S1 group (structural) |
 | COX | 15/20 = 75% | 17/20 | Fixed +4 by Indole+Sulfonamide motif |
 | Kinase | 18/20 = 90% | 18/20 | +4 by pyrimidine router (mono-pyrimidine→kinase, branch 3); earlier +6 αβunsat+Sulfonamide. 2 remaining: 1 strong-GPCR (CHEMBL5270693), 1 Steroid |
-| CYP450 | 19/20 = 95% | 19/20 | Fixed +12 total; 5 ritonavir-class by Thiazole SMARTS; 1 TAZAROTENIC ACID structural. Pyrimidine guard added (no CYP450 TP has pyrimidine) |
+| CYP450 | 14/20 = 70% | — | Was 19/20 until 2026-07-03: the ID-tuned aryl-halide/amide-halide/ether-amine COOH rules were removed (memorised specific ChEMBL ids; +0 on held-out). Only the mechanistic azole heme-Fe rule remains (Thiazole SMARTS still fixes ritonavir-class). The 5 lost compounds are non-azole lipophilic substrates with no generalisable CYP pharmacophore |
 | Adenosine receptor | 12/20 = 60% | 12/20 | +7 by pyrimidine router (fused-azolo-diazine→adenosine, branch 2). 8 remaining: no purine-mimetic core (Phenol/Halogen sparse, or Nitrile/Steroid) |
 | mTOR | 17/20 = 85% | 17/20 | Fixed +16 by morpholino-diazine motif (16 ATP-competitive TORKinibs); +SIROLIMUS by macrolide rule. 3 remaining have no morpholine (SAPANISERTIB, CHEMBL3645910, CHEMBL3681183) |
 | COMT | 8/20 = 40% | — | nitrocatechol (entacapone/opicapone) via existing Phenol+Catechol; other 12 = research series w/o nitrocatechol (pChEMBL-bias) |
 | MAO | 2/20 = 10% | — | propargylamine (clorgiline) via MAO warhead rule; 18 = single research series (Sec/Tert amine, no MAO pharmacophore) |
-| cysteine protease | 12/20 = 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via Nitrile+Amide rule; zero collision. 8 remaining lack nitrile |
+| cysteine protease | 12/20 = 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via **Non-aryl-nitrile**+Amide rule (2026-07-03: switched from generic Nitrile so aryl-nitrile NR/HDAC ligands are no longer mis-grabbed — held-out +5; all 12 tuning TPs kept). 8 remaining lack the warhead |
 | topoisomerase | 5/20 = 25% | — | anthracyclines (doxorubicin/daunorubicin/epirubicin/idarubicin/nemorubicin) via Anthraquinone voting FG (mw=2.5, sole topo annotator → IDF≈3.7). 15 = research series w/o intercalator core |
 | xanthine oxidase | 0/20 | — | pChEMBL-bias: research series (Phenol+Amide+Pyrimidine), no allopurinol/febuxostat pharmacophore; pyrimidine→kinase collision. Structural limit |
 

@@ -50,8 +50,10 @@ takes the max Jaccard. `build_override()` re-rank/merge contract tested.
   `sim==threshold` maps to score 0.0, a useless proposal — caffeine docks the trypsin S1 at
   ≈0.60). Heavy deps lazy.
 - **Still NOT auto-registered** (default hook = no-op stub) → predict/benchmark byte-identical
-  (core 190/220 unchanged). Activate: `register_fallback_3d(ProLIFFallback())`. Regression
-  surface = the 41 low-confidence HITS (overrides must not break them).
+  to the FG baseline (whatever it currently is — was 190/220 when the 0/7 result was measured;
+  185/220 after the 2026-07-03 de-overfitting pass, which did not touch the SP misses). Activate:
+  `register_fallback_3d(ProLIFFallback())`. Regression surface = the 41 low-confidence HITS
+  (overrides must not break them).
 - **`_find_backend()`**: smina 2020.12.10 lives at `<env>/Library/bin/smina.exe`; `shutil.which`
   misses it without `conda activate`, so `_find_backend` also probes
   `sys.prefix`/{Library/bin,bin,Scripts}.

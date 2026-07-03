@@ -60,6 +60,8 @@ chem_target/
 ├── output/         # Generated output — CSV, SVG, HTML, reports
 ├── run_benchmark.py   # 11-class × 20-compound benchmark pipeline (--mlflow opt-in)
 ├── backfill_mlflow.py # One-off: backfill pre-DVC milestones as reconstructed MLflow runs
+├── eval_holdout.py    # Held-out generalisation eval: tuning vs zero-overlap held-out gap
+├── tests/             # Stdlib unittest regression net (locks the headline; no pytest dep)
 └── main.py         # Entry point only. Thin. No logic here.
 ```
 
@@ -254,8 +256,10 @@ non-deterministic — deliberately skipped per "don't over-engineer").
   full-16-class + **core-11-subset** Top-1/Top-3, per-class Top-1, MRR,
   macro/weighted F1, git SHA/dirty, + report & summary as artifacts.
   Default (no flag) is byte-identical — mlflow is never imported unless asked.
-- `core11_*` metrics = the headline 190/220 basis; plain `top1_acc` on the live
-  run is the wider 320/16-class basis (do NOT compare the two series directly).
+- `core11_*` metrics = the headline core-11 subset basis (190/220 when the
+  backfilled runs were recorded; currently 185/220 after the 2026-07-03
+  de-overfitting pass); plain `top1_acc` on the live run is the wider
+  320/16-class basis (do NOT compare the two series directly).
 - `python backfill_mlflow.py` = one-off; 17 pre-DVC milestones (59.1%→86.4%)
   reconstructed from commit messages, tagged `reconstructed=true`. **Run once
   only** (re-running duplicates; clear `mlflow.db` first). Pre-DVC dataset
@@ -370,7 +374,7 @@ Branch-3 exclusions are competing pharmacophores whose own FG votes/rules alread
 
 1. **mTOR 85% (17/20)**: SIROLIMUS fixed by macrolide rule; 16 ATP-competitive TORKinibs fixed by morpholino-diazine rule (2026-06-15). 3 remaining have NO morpholine: SAPANISERTIB & CHEMBL3645910 (pyrimidine core only, no morpholine), CHEMBL3681183 (Hydroxyl+Imidazole → CYP450). These need fused-N-heteroaromatic core detection (方案 4, flagged in Next tasks) — do NOT try to fix with the morpholino rule.
 2. **Adenosine receptor 60% (12/20)**: +7 by pyrimidine router branch 2 (fused-azolo-diazine→adenosine, 2026-06-15). 8 remaining have NO purine-mimetic fused core: sparse Phenol+Phenyl+Halogen→NR (CHEMBL2024114, 97760), Nitrile+Triazole→cys protease/kinase (CHEMBL5177144, 5171044), Steroid (CHEMBL369573), Thiazole+Nitrile→CYP (CHEMBL2419137, 2419150), non-fused Thiazole+Pyrimidine (CHEMBL3917647).
-3. **CYP450 95% (19/20)**: 1 remaining failure = TAZAROTENIC ACID (pyridine scaffold; no azole/halogen FG → invisible to CYP scoring). Thiazole SMARTS (2026-06-04) fixed ritonavir-class ×5 compound.
+3. **CYP450 70% (14/20)** (was 95% until 2026-07-03): the ID-tuned aryl-halide/amide-halide/ether-amine COOH rules were removed (memorised specific ChEMBL ids; +0 on held-out — see "De-overfitting" in the headline). Only the mechanistic azole heme-Fe rule remains (Thiazole SMARTS still fixes ritonavir-class ×5). The 5 lost compounds are non-azole lipophilic substrates with no generalisable CYP pharmacophore — **do NOT re-add halogen/COOH-combo rules to chase them** (that is exactly the memorisation that was removed).
 4. **Serine protease 65% (13/20)**: +1 by Guanidine FG (CHEMBL353760, 2026-06-16). 7 remaining peptidomimetics have NO S1 Arg-mimetic at all (no Benzamidine/Guanidine/amidine) — verified; structural, not a missing-pattern gap. They look like NR/tubulin/GPCR/CA.
 5. **Kinase 90% (18/20)**: +4 by pyrimidine router branch 3 (mono-pyrimidine→kinase, 2026-06-15; recovered ERLOTINIB, CHEMBL29197/176582/174426). 2 remaining: CHEMBL5270693 (strong GPCR score 6.31 from TertAmine+Indole+Phenyl beats kinase bonus), CHEMBL4537790 (Steroid scaffold → androgen).
 6. **NR 80% (16/20)**: 2 Acylsulfonamide→tubulin (irreconcilable without hurting tubulin). 2 purely structural.

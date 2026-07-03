@@ -286,10 +286,15 @@ Outputs saved to `output/benchmark/`:
 | Mean Reciprocal Rank | **0.872** | 0.754 |
 | Macro-avg F1 (Top-1) | **0.855** | 0.726 |
 
-On the classes it targets, chem_target now **out-performs** STP overall — driven by
+On the classes it targets, chem_target out-performs STP overall — driven by
 mechanistic pharmacophores STP's fingerprint similarity misses (tubulin 95% vs 5%,
 CYP450 95% vs 35%, mTOR 85% vs 60%). STP remains stronger on well-populated ChEMBL
 classes with dense analog series (COX, adenosine, serine protease).
+
+> **Note (2026-07-03):** this head-to-head was run before the de-overfitting pass, so
+> the chem_target column reflects the then-86.4% tuning-set model (e.g. CYP450 95%,
+> now 70%). It is a *tuning-set* comparison and, like the 86.4% headline, an upper
+> bound — re-run `run_stp_comparison.py --compare` to refresh against the current model.
 
 > ⚠ **STP bias note:** The curated test compounds are sourced directly from ChEMBL,
 > the same database STP's fingerprint models are trained on.  STP accuracy figures
