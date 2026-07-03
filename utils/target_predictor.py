@@ -49,6 +49,7 @@ import sys
 from collections import Counter, defaultdict
 from math import log
 from pathlib import Path
+from typing import Callable, Optional
 
 import pandas as pd
 
@@ -69,10 +70,31 @@ _CYPCOND_AZOLE_BONUS: float = 2.0   # Imidazole + lipophilic partner
 _CYPCOND_LIPOPHILIC_FGS: frozenset[str] = frozenset({"Phenyl ring", "Ether", "Halogen"})
 _COX_INDOLE_SULFONAMIDE_BONUS: float = 2.0  # Indole + Sulfonamide COX-2 pharmacophore
 _MTOR_MACROLIDE_BONUS: float = 2.0          # Macrolide without competing metal-binding warheads
+# ── Pyrimidine router bonuses (mutually-exclusive ATP-pocket / purine-mimetic routing) ──
+_MTOR_MORPHOLINO_BONUS: float = 2.0         # Morpholine + diazine — ATP-competitive PI3K/mTOR hinge binder
+_ADENOSINE_FUSED_BONUS: float = 2.0         # fused azolo-pyrimidine core — purine-mimetic A2A scaffold
+_KINASE_AMINOPYRIMIDINE_BONUS: float = 2.0  # mono-pyrimidine hinge binder — kinase (quinazoline/aminopyrimidine)
+_MAO_WARHEAD_BONUS: float = 2.5             # propargylamine / hydrazine — irreversible MAO inhibitor warhead
+_CYSPROT_NITRILE_BONUS: float = 2.5         # peptidomimetic nitrile warhead — cysteine protease (cathepsin)
+# Markers that re-assign a nitrile to a competing class (kinase hinge / covalent
+# kinase warhead / carbonic anhydrase) — exclude from the cysteine-protease rule.
+_CYSPROT_EXCLUSIONS: frozenset[str] = frozenset({
+    "α,β-unsat. carbonyl",   # covalent kinase warhead
+    "Pyrimidine", "Quinazoline", "Pyrrolopyrimidine", "Fused azolo-diazine",  # kinase/ATP hinge
+    "Sulfonamide",           # carbonic anhydrase
+})
+# Competing pharmacophores that claim a mono-pyrimidine compound for another class
+# (their own FG votes/rules already handle them) — exclude from the kinase branch.
+_PYRIMIDINE_KINASE_EXCLUSIONS: frozenset[str] = frozenset({
+    "Methylsulfone",     # COX-2 selectivity pocket (coxib)
+    "Hydroxamate",       # HDAC Zn-chelation warhead
+    "Carboxylic acid",   # polyfunctional GPCR ligands / NSAIDs, not ATP-competitive
+    "Aldehyde",          # polyfunctional GPCR ligand context
+    "Steroid",           # nuclear-receptor scaffold
+})
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 _KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
-_CYP450_ARYL_HALIDE_COOH_BONUS: float = 1.5   # Aryl-halide carboxylic acid — CYP substrate (no Amide/Ether)
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -147,12 +169,46 @@ def _compute_target_idf(fg_db: dict) -> dict[str, float]:
     return {tc: log(n_fgs / count) for tc, count in tc_count.items()}
 
 
+def _has_free_heme_azole(fg_set: set[str]) -> bool:
+    """True if a free (non-fused, non-benzo) azole ring able to coordinate heme Fe.
+
+    A heme-coordinating azole antifungal (fluconazole/voriconazole/ketoconazole/
+    ritonavir class) carries a *free* azole nitrogen lone pair that ligates the
+    CYP heme iron.  This is the structural opposite of:
+      • a fused azolo-diazine (purine-mimetic: the ring N is locked inside the
+        fused system — adenosine/kinase scaffold, not a heme binder), and
+      • a benzimidazole (the imidazole is benzo-fused; benzimidazole drugs here
+        are kinase inhibitors, not antifungals — their Imidazole match is an
+        artefact of the substructure overlap).
+
+    This is what lets voriconazole (free Triazole + a *separate* fluoropyrimidine)
+    stay CYP450 while a benzimidazole-pyrimidine kinase inhibitor or a fused
+    triazolopyrimidine adenosine ligand does not.
+
+    Args:
+        fg_set: set of detected FG names.
+
+    Returns:
+        True if a free heme-coordinating azole is present.
+    """
+    if "Fused azolo-diazine" in fg_set:
+        return False
+    return (
+        "Triazole" in fg_set
+        or "Thiazole" in fg_set
+        or ("Imidazole" in fg_set and "Benzimidazole" not in fg_set)
+    )
+
+
 def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus vote for CYP450 when azole-type combos are present.
 
-    Rule: Imidazole + at least one lipophilic partner (Phenyl ring, Ether,
-    or Halogen), provided the compound lacks FGs that indicate a competing
-    metal-binding context:
+    Rule: Imidazole OR Triazole OR Thiazole + at least one lipophilic partner
+    (Phenyl ring, Ether, or Halogen), provided the compound lacks FGs that
+    indicate a competing metal-binding context:
+      • Thiazole added 2026-06-04: ritonavir-class CYP3A4 inhibitors carry a
+        thiazole ring whose N coordinates heme Fe(III), analogously to imidazole
+        (ketoconazole-class) and triazole (fluconazole-class).
       • Ketone excluded: alpha-keto HDAC warhead (romidepsin-class inhibitors
         contain Imidazole + Ketone but are HDAC substrates, not CYP heme binders).
       • Purine excluded: the imidazole-like ring in purines (adenosine receptor
@@ -170,84 +226,19 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     ketone_hdac_context = "Ketone" in fg_set and (
         "Amide" in fg_set or "Tertiary amine" in fg_set
     )
+    # Require a FREE heme-coordinating azole.  This both (a) excludes the
+    # purine-mimetic fused azolo-diazine cores (adenosine/kinase) and (b) keeps
+    # voriconazole-class antifungals (free Triazole + a *separate* fluoropyrimidine)
+    # as CYP450, where a blanket "no Pyrimidine" guard would wrongly drop them.
     if (
-        "Imidazole" in fg_set
+        _has_free_heme_azole(fg_set)
         and fg_set & _CYPCOND_LIPOPHILIC_FGS
         and not ketone_hdac_context
         and "Purine" not in fg_set
         and "α,β-unsat. carbonyl" not in fg_set  # covalent kinase warhead context
+        and "Sulfonamide" not in fg_set           # CA Zn-binding context; triazole-sulfonamide CA inhibitors exist
     ):
         return _CYPCOND_AZOLE_BONUS, "azole motif"
-    return 0.0, ""
-
-
-def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
-    """Pre-IDF bonus for CYP450 when aryl-halide carboxylic acid is present without NSAID context.
-
-    Two rules (additive where both fire):
-
-    Rule A: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
-      Catches minimal aryl-halide COOH scaffold (CHEMBL3125537, CHEMBL3407554).
-      Exclusions prevent NSAID conflict:
-        • INDOMETHACIN (COX HIT): has Ether → excluded ✓
-        • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
-
-    Rule B: Carboxylic acid + Amide + Ether + Phenyl ring + Halogen.
-      Catches extended aryl-halide COOH + linker scaffold (CHEMBL3407558, CHEMBL3407575).
-      Safety: the only benchmark HIT with this combo is CHEMBL6067690 (GPCR, score=7.784
-      from 4 GPCR FGs), which remains GPCR even with the +1.5 CYP450 bonus (4.022 < 7.784).
-
-    Returns:
-        (bonus_wt, label) — pre-IDF weight and evidence label.  Returns (0.0, '') if neither
-        rule fires.
-    """
-    fg_set = set(fgs_detected)
-    # Rule A — minimal aryl-halide COOH
-    if (
-        "Carboxylic acid" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Amide" not in fg_set
-        and "Ether" not in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH CYP substrate"
-    # Rule B — extended aryl-halide COOH + Amide + Ether linker
-    if (
-        "Carboxylic acid" in fg_set
-        and "Amide" in fg_set
-        and "Ether" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
-    # Rule D — Amide + Phenyl + Halogen without sulfonamide/ether/COOH (minimal CYP substrate)
-    # Catches e.g. CHEMBL3236364.  CA HITs all have Sulfonamide -> excluded.
-    # Bonus needs only +0.5 to exceed tubulin IDF (2.169) from Phenyl alone.
-    if (
-        "Amide" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Sulfonamide" not in fg_set
-        and "Carboxylic acid" not in fg_set
-        and "Imidazole" not in fg_set
-        and "α,β-unsat. carbonyl" not in fg_set
-        and "Ether" not in fg_set
-    ):
-        return 0.5, "amide-halide CYP substrate"
-    # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
-    # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
-    # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).
-    # Verified: only APREPITANT matches in 220-compound benchmark.
-    if (
-        "Ether" in fg_set
-        and "Tertiary amine" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Lactone" not in fg_set
-        and "Amide" not in fg_set
-        and "Nitrile" not in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "ether-amine CYP3A4 scaffold"
     return 0.0, ""
 
 
@@ -298,6 +289,144 @@ def _mtor_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Acylsulfonamide" not in fg_set
     ):
         return _MTOR_MACROLIDE_BONUS, "macrolide mTOR motif"
+    return 0.0, ""
+
+
+def _pyrimidine_router(fgs_detected: list[str]) -> tuple[str, float, str] | None:
+    """Route a pyrimidine/triazine-bearing compound to ONE ATP-pocket target.
+
+    Pyrimidine (and 1,3,5-triazine) is the shared hinge-anchoring diazine of
+    purine-mimetic ATP-pocket binders.  In the curated benchmark it is strongly
+    enriched in exactly three classes (mTOR 16/20, kinase 16/20, adenosine 14/20)
+    and almost absent elsewhere, so a diazine alone cannot pick the target — but
+    a single secondary feature resolves it into mutually-exclusive branches:
+
+        Branch 1  Morpholine present              → mTOR        (PI3K/mTOR hinge)
+        Branch 2  fused azolo-diazine core        → adenosine  (purine-mimetic A2A)
+        Branch 3  mono-pyrimidine (no morpholine,
+                  no fused core, no competing
+                  pharmacophore)                  → kinase      (quinazoline/aminopyrimidine)
+
+    The branches are evaluated in order and only one fires, so this single router
+    replaces what would otherwise be several independent additive bonuses that
+    could conflict.  Competing pharmacophores (Methylsulfone→COX, Hydroxamate→
+    HDAC, COOH/Aldehyde→GPCR, Steroid→NR) short-circuit Branch 3 because their own
+    FG votes / rules already claim the compound; this keeps the kinase branch from
+    stealing those classes' true positives.
+
+    Benchmark provenance (220 curated compounds):
+        Branch 1 = 14 compounds, all mTOR.
+        Branch 2 = 13 compounds, 12 adenosine + 1 mTOR (SAPANISERTIB, already a
+                   miss → no regression).
+        Branch 3 (after exclusions) = kinase-dominant; residual contaminants are
+                   all already-misses.
+
+    Caveat (generalisation, not in benchmark): a free triazole antifungal that
+    also carries a *separate* fluoropyrimidine (e.g. voriconazole) would be
+    misrouted here rather than to CYP450.  Acceptable for the benchmark-driven
+    scope; revisit if CYP450 azole+pyrimidine compounds are added.
+
+    Returns:
+        (target_class, pre_idf_bonus, evidence_label) for the single matched
+        branch, or None if the router does not apply.
+    """
+    fg_set = set(fgs_detected)
+    if "Pyrimidine" not in fg_set and "Triazine" not in fg_set:
+        return None
+
+    # Branch 1 — morpholino-diazine → mTOR (covers pyrimidine OR triazine anchor)
+    if "Morpholine" in fg_set:
+        return "mTOR", _MTOR_MORPHOLINO_BONUS, "morpholino-diazine mTOR motif"
+
+    # Branches 2 and 3 are pyrimidine-specific (triazine only seen in mTOR set)
+    if "Pyrimidine" not in fg_set:
+        return None
+
+    # Branch 2 — fused azolo-pyrimidine purine-mimetic core → adenosine receptor
+    if "Fused azolo-diazine" in fg_set:
+        return ("adenosine receptor", _ADENOSINE_FUSED_BONUS,
+                "fused-azolopyrimidine adenosine motif")
+
+    # Branch 3 — mono-pyrimidine hinge binder → kinase, unless a competing
+    # pharmacophore already claims the compound for another class, or a free
+    # heme-coordinating azole marks it as a CYP450 antifungal (voriconazole:
+    # free Triazole + separate fluoropyrimidine — let the CYP450 azole rule win).
+    if (
+        not (fg_set & _PYRIMIDINE_KINASE_EXCLUSIONS)
+        and not _has_free_heme_azole(fg_set)
+    ):
+        return ("kinase", _KINASE_AMINOPYRIMIDINE_BONUS,
+                "aminopyrimidine kinase hinge motif")
+
+    return None
+
+
+def _mao_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for MAO when an irreversible-inhibitor warhead is present.
+
+    Rule: Propargylamine OR Hydrazine present → MAO.
+
+    Rationale:
+        The propargylamine group (N-CH2-C#CH) forms a covalent N5-flavocyanine
+        adduct with the FAD cofactor of monoamine oxidase — the defining warhead
+        of selegiline, rasagiline, pargyline and clorgiline.  Hydrazines /
+        hydrazides (phenelzine, isocarboxazid, iproniazid) are the other classical
+        irreversible MAO-inhibitor chemotype.  Both are mechanistically specific to
+        MAO and rare elsewhere, so a single bonus resolves them cleanly.
+
+        Detection markers come from _WARHEAD_ANNOTATIONS (routing-only; not in
+        fg_database.json → no IDF shift).
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to MAO votes and an evidence
+        label.  Returns (0.0, '') if no warhead is present.
+    """
+    fg_set = set(fgs_detected)
+    # Guard against incidental warhead matches in compounds whose true class is
+    # signalled by a stronger pharmacophore:
+    #   • Sulfonamide → carbonic anhydrase (Zn binder)
+    #   • Nitrile / α,β-unsat. carbonyl → covalent kinase warhead context
+    # Genuine MAO propargylamines/hydrazines (selegiline, clorgiline, phenelzine)
+    # carry none of these.
+    if fg_set & {"Sulfonamide", "Nitrile", "α,β-unsat. carbonyl"}:
+        return 0.0, ""
+    if "Propargylamine" in fg_set:
+        return _MAO_WARHEAD_BONUS, "propargylamine MAO warhead"
+    if "Hydrazine" in fg_set:
+        return _MAO_WARHEAD_BONUS, "hydrazine MAO inhibitor"
+    return 0.0, ""
+
+
+def _cysteine_protease_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
+    """Pre-IDF bonus vote for cysteine protease — peptidomimetic nitrile warhead.
+
+    Rule: Non-aryl nitrile + Amide present, AND none of _CYSPROT_EXCLUSIONS.
+
+    Rationale:
+        Reversible covalent cathepsin inhibitors (odanacatib / cathepsin-K class)
+        carry a nitrile warhead that forms a thioimidate with the catalytic Cys25.
+        On the benchmark these are peptidomimetics (nitrile + multiple Amides) with
+        no kinase ATP-hinge.
+
+        Mechanistic refinement (2026-07-03): the rule keys on the routing-only
+        "Non-aryl nitrile" marker, NOT the generic "Nitrile" FG.  Only a non-aryl
+        (aliphatic/heteroatom-bound) nitrile is the electrophilic thioimidate-
+        forming warhead; an *aryl* nitrile (enobosarm/bicalutamide-type androgen
+        ligands, aryl-CN HDAC series) is an inert aromatic substituent.  Keying on
+        bare "Nitrile" made this rule mis-grab those aryl-nitrile nuclear-receptor
+        / HDAC compounds (held-out: +5 core-11 recovered by the switch); keying on
+        "Non-aryl nitrile" keeps all 12 curated cathepsin true positives (verified)
+        while dropping the aryl-nitrile false grabs.  The excluded kinase-hinge /
+        covalent-kinase / carbonic-anhydrase markers are retained.
+
+    Returns:
+        (bonus_wt, label) — pre-IDF weight to add to cysteine protease votes and an
+        evidence label.  Returns (0.0, '') if the rule does not fire.
+    """
+    fg_set = set(fgs_detected)
+    if ("Non-aryl nitrile" in fg_set and "Amide" in fg_set
+            and not (fg_set & _CYSPROT_EXCLUSIONS)):
+        return _CYSPROT_NITRILE_BONUS, "peptidomimetic nitrile cathepsin warhead"
     return 0.0, ""
 
 
@@ -365,10 +494,17 @@ def _apply_negative_constraints(
     Rules:
       • Hydroxamate or Thiol → Zn2+ chelation → HDAC / metalloprotease context.
       • Acylsulfonamide → tubulin macrolide warhead.
-      Both: remove cytochrome P450 entry entirely.
+      • Fused azolo-diazine + Pyrimidine → purine-mimetic core (adenosine/kinase):
+        the ring N is locked inside a fused diazine and cannot coordinate heme
+        Fe, so even the residual base azole votes (Triazole/Thiazole mw) must not
+        accrue to CYP450.  No CYP450 true positive carries a fused azolo-diazine.
+      All: remove cytochrome P450 entry entirely.
     """
     fg_set = set(fgs_detected)
     if fg_set & {"Hydroxamate", "Thiol", "Acylsulfonamide"}:
+        weighted_votes.pop("cytochrome P450", None)
+        evidence.pop("cytochrome P450", None)
+    if "Fused azolo-diazine" in fg_set and "Pyrimidine" in fg_set:
         weighted_votes.pop("cytochrome P450", None)
         evidence.pop("cytochrome P450", None)
 
@@ -487,13 +623,16 @@ def predict_target_classes(
         )
 
     # ── Post-accumulation adjustments ────────────────────────────────────────
-    # CYP450 conditional bonus (applied before IDF multiplication)
+    # CYP450 conditional bonus (applied before IDF multiplication).
+    # This is the ONLY CYP450 rule kept: it keys on a free heme-coordinating
+    # azole (fluconazole/voriconazole/ketoconazole/ritonavir class), a genuine
+    # mechanism that generalises (held-out ablation: −17 when removed).  The
+    # former aryl-halide / amide-halide / ether-amine COOH sub-rules were removed
+    # (2026-07-03): they were tuned to specific curated CHEMBL ids, recovered
+    # 5 tuning compounds by memorisation, and contributed +0 on the held-out set
+    # — halogen/phenyl/COOH are promiscuity features, not CYP450 pharmacophores,
+    # and the held-out CYP misses carry no recurring mechanistic motif to key on.
     cyp_bonus, cyp_label = _cyp450_conditional_bonus(fgs_detected)
-    # CYP450 aryl-halide COOH substrate bonus
-    cyp_ah_bonus, cyp_ah_label = _cyp450_arylhalide_cooh_bonus(fgs_detected)
-    if cyp_ah_bonus > 0.0:
-        cyp_bonus += cyp_ah_bonus
-        cyp_label = (cyp_label + " + " + cyp_ah_label).strip(" + ")
     if cyp_bonus > 0.0:
         weighted_votes["cytochrome P450"] = (
             weighted_votes.get("cytochrome P450", 0.0) + cyp_bonus
@@ -506,17 +645,39 @@ def predict_target_classes(
         weighted_votes["COX"] = weighted_votes.get("COX", 0.0) + cox_bonus
         evidence["COX"].append(f"[{cox_label}]")
 
-    # mTOR conditional bonus
+    # mTOR conditional bonus — macrolide (rapalog) scaffold
     mtor_bonus, mtor_label = _mtor_conditional_bonus(fgs_detected)
     if mtor_bonus > 0.0:
         weighted_votes["mTOR"] = weighted_votes.get("mTOR", 0.0) + mtor_bonus
         evidence["mTOR"].append(f"[{mtor_label}]")
+
+    # Pyrimidine router — mutually-exclusive ATP-pocket routing
+    # (mTOR morpholino / adenosine fused-azolopyrimidine / kinase aminopyrimidine)
+    routed = _pyrimidine_router(fgs_detected)
+    if routed is not None:
+        r_tc, r_bonus, r_label = routed
+        weighted_votes[r_tc] = weighted_votes.get(r_tc, 0.0) + r_bonus
+        evidence[r_tc].append(f"[{r_label}]")
 
     # Kinase covalent warhead bonus
     kin_bonus, kin_label = _kinase_conditional_bonus(fgs_detected)
     if kin_bonus > 0.0:
         weighted_votes["kinase"] = weighted_votes.get("kinase", 0.0) + kin_bonus
         evidence["kinase"].append(f"[{kin_label}]")
+
+    # MAO covalent-warhead conditional bonus
+    mao_bonus, mao_label = _mao_conditional_bonus(fgs_detected)
+    if mao_bonus > 0.0:
+        weighted_votes["MAO"] = weighted_votes.get("MAO", 0.0) + mao_bonus
+        evidence["MAO"].append(f"[{mao_label}]")
+
+    # Cysteine protease nitrile-warhead conditional bonus
+    cysp_bonus, cysp_label = _cysteine_protease_conditional_bonus(fgs_detected)
+    if cysp_bonus > 0.0:
+        weighted_votes["cysteine protease"] = (
+            weighted_votes.get("cysteine protease", 0.0) + cysp_bonus
+        )
+        evidence["cysteine protease"].append(f"[{cysp_label}]")
 
     # Adenosine receptor conditional bonus
     ado_bonus, ado_label = _adenosine_conditional_bonus(fgs_detected)
@@ -528,6 +689,14 @@ def predict_target_classes(
 
     # Negative constraints (suppress incompatible target classes in-place)
     _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
+
+    # A negative constraint can remove the only remaining vote (e.g. a compound
+    # whose sole class was cytochrome P450, then suppressed).  Guard the empty
+    # case so we return an empty frame instead of sorting a column-less one.
+    if not weighted_votes:
+        return pd.DataFrame(
+            columns=["target_class", "score", "votes", "evidence_fgs"]
+        )
 
     rows = []
     for tc, wt_sum in weighted_votes.items():   # insertion order preserved
@@ -545,6 +714,91 @@ def predict_target_classes(
         .reset_index(drop=True)
     )
     return df
+
+
+# ── FG confidence tiering + 3D-fallback routing ────────────────────────────────
+#
+# The FG layer is high-precision but leaves two failure modes (verified on the
+# benchmark): NO-ANSWER (true class never scored) and FALSE-POSITIVE (true class
+# scored but out-ranked).  A future 3D layer (RDKit shape / ProLIF / Gnina) can
+# help, but only as a *fallback* gated on LOW FG confidence — it must never touch
+# the FG layer's high-confidence calls, which carry the zero-regression core.
+#
+# This is the routing SKELETON: confidence is assessed from observable signal only
+# (no peeking at ground truth), and a pluggable hook is invoked for low-confidence
+# cases.  The default hook is a no-op stub, so predictions are byte-identical to
+# the pure-FG pipeline (zero regression by construction).  Plug a real model via
+# register_fallback_3d().
+
+_CONF_HIGH = "high"
+_CONF_LOW = "low"
+_CONF_NONE = "none"
+
+# Tunable gate thresholds (observable-signal only).
+_CONF_MIN_TOP1_SCORE: float = 3.0   # top-1 IDF-weighted score below this = weak
+_CONF_MIN_MARGIN: float = 0.75      # (top1 − top2) below this = ambiguous tie
+
+
+def assess_confidence(
+    target_class_votes: pd.DataFrame,
+    fgs_detected: list[str],
+) -> str:
+    """Classify FG-layer confidence from observable signal (no ground truth).
+
+    Returns:
+        "none" — no target class scored (empty votes): prime 3D-fallback candidate.
+        "low"  — weak top-1 score OR small top1−top2 margin (ambiguous).
+        "high" — a clear, strong winner: keep the FG call, do NOT override.
+    """
+    if target_class_votes is None or target_class_votes.empty:
+        return _CONF_NONE
+    scores = list(target_class_votes["score"])
+    top1 = float(scores[0])
+    top2 = float(scores[1]) if len(scores) > 1 else 0.0
+    if top1 < _CONF_MIN_TOP1_SCORE or (top1 - top2) < _CONF_MIN_MARGIN:
+        return _CONF_LOW
+    return _CONF_HIGH
+
+
+def _stub_fallback_3d(smiles: str, fg_result: dict) -> Optional[dict]:
+    """Placeholder 3D fallback. Returns None = "no override" (FG result kept).
+
+    The real implementation will go here (or be registered via
+    register_fallback_3d) — RDKit 3D shape/colour retrieval for NO-ANSWER classes,
+    ProLIF interaction-fingerprint matching, and/or Gnina docking rescore for
+    FALSE-POSITIVE re-ranking.  A non-None return must be a dict of result keys to
+    merge (e.g. an augmented/re-ranked ``target_class_votes``).
+    """
+    return None
+
+
+# Pluggable hook. Default = no-op stub → zero behavioural change.
+_FALLBACK_3D: Callable[[str, dict], Optional[dict]] = _stub_fallback_3d
+
+
+def register_fallback_3d(fn: Callable[[str, dict], Optional[dict]]) -> None:
+    """Register a real 3D-fallback model. Pass _stub_fallback_3d to reset."""
+    global _FALLBACK_3D
+    _FALLBACK_3D = fn
+
+
+def _finalize_with_fallback(result: dict, smiles: str) -> dict:
+    """Tag confidence and route low-confidence predictions to the 3D fallback.
+
+    Zero-regression invariant: the fallback is consulted only for low/none
+    confidence, and only an explicit non-None return overrides the FG result.
+    The default stub returns None, so output is unchanged.
+    """
+    result["confidence"] = assess_confidence(
+        result.get("target_class_votes"), result.get("fgs_detected", [])
+    )
+    result["fallback_applied"] = False
+    if result["confidence"] in (_CONF_LOW, _CONF_NONE):
+        override = _FALLBACK_3D(smiles, result)
+        if override is not None:
+            result.update(override)
+            result["fallback_applied"] = True
+    return result
 
 
 # ── Main prediction pipeline ───────────────────────────────────────────────────
@@ -574,6 +828,13 @@ def predict(
           residue_scores     (pd.DataFrame)  — residue | residue_name | score | contributing_fgs
           target_class_votes (pd.DataFrame)  — target_class | score | votes | evidence_fgs
           warning            (str | None)    — set on SMILES parse failure or missing table
+
+    NOTE — residue_scores is an INDEPENDENT, informational output.  It is NOT an
+    input to target-class ranking: ``target_class_votes`` is computed purely from
+    ``fgs_detected`` × fg_database.json (see predict_target_classes).  The two
+    outputs share only the detected-FG list, so the BioLiP FG×residue table does
+    not influence which target class is predicted.  (Integrating the residue
+    signal into the decision is an open design question — see the review notes.)
     """
     result: dict = {
         "smiles": smiles,
@@ -590,7 +851,8 @@ def predict(
             f"No SMARTS-matched functional groups detected in: {smiles}\n"
             "  Check that the SMILES is valid and that FG_SMARTS covers the scaffold."
         )
-        return result
+        # No FGs = the strongest NO-ANSWER signal — route to the 3D fallback.
+        return _finalize_with_fallback(result, smiles)
     result["fgs_detected"] = fgs
 
     # 2. Load FG × residue table
@@ -612,7 +874,8 @@ def predict(
         fgs, fg_db, use_idf=use_idf
     )
 
-    return result
+    # 5. Confidence tiering + (gated) 3D-fallback routing — no-op stub by default
+    return _finalize_with_fallback(result, smiles)
 
 
 # ── Report formatter ───────────────────────────────────────────────────────────

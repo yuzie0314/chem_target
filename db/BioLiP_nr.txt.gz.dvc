@@ -1,0 +1,5 @@
+outs:
+- md5: 57e57d3d47568be85545f54381ae0c4f
+  size: 14455793
+  hash: md5
+  path: BioLiP_nr.txt.gz

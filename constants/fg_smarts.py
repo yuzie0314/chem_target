@@ -24,8 +24,8 @@ in the docstring and in fg_database.json but is *absent* from FG_SMARTS.
 
 Current FG count
 ----------------
-FG_SMARTS defines 35 patterns.  Including Steroid (Python-detected), the
-full set used in prediction is 36 functional groups.
+FG_SMARTS defines 42 patterns.  Including Steroid (Python-detected), the
+full set used in prediction is 43 functional groups.
 
 Used by
 -------
@@ -80,6 +80,16 @@ FG_SMARTS: dict[str, str] = {
     #   acceptable: each level provides independent pharmacological information.
     "Ether":                    "[OX2;!$(O=*);!$([OX2H]);!$(OC=O)]([#6])[#6]",
     "Methylenedioxy":           "c1ccc2c(c1)OCO2",
+    # Morpholine: saturated 6-membered ring with O and N at the 1,4 positions.
+    #   The morpholine oxygen is the signature hinge-binding group of
+    #   ATP-competitive PI3K / mTOR kinase inhibitors (AZD8055, vistusertib,
+    #   dactolisib/BEZ235, gedatolisib), H-bonding to the hinge residue
+    #   (Val2240 in mTOR / Val851 in PI3Kα). Scaffold marker only — mTOR voting
+    #   is handled by the morpholino-diazine conditional rule in
+    #   target_predictor.py (Morpholine alone is promiscuous: gefitinib, etc.).
+    #   Hierarchical overlap with Ether (ring O) and Tertiary amine (N-alkyl ring
+    #   N) is intentional. Aliphatic SMARTS — does not match aromatic oxazines.
+    "Morpholine":               "O1CCNCC1",
 
     # ── Amines ────────────────────────────────────────────────────────────────
     # Each substitution level has a different pKa, H-bond profile, and
@@ -94,6 +104,48 @@ FG_SMARTS: dict[str, str] = {
     # (n without H) to match azole antifungals such as ketoconazole,
     # clotrimazole, miconazole — where position-1 N is alkylated.
     "Imidazole":                "c1cnc[nH,n]1",
+    # Triazole: 5-membered aromatic ring with 3 N atoms (1,2,4-triazole pattern
+    #   n-c-n-c-n).  Covers BOTH N-H (1H-triazole) AND N-substituted triazoles.
+    #   Key scaffold in triazole antifungals (fluconazole, voriconazole, itraconazole,
+    #   posaconazole) that coordinate the heme iron of fungal CYP51 (lanosterol
+    #   14α-demethylase) via the free N of the triazole ring.  Distinct from Imidazole
+    #   (2N in ring) and Purine (fused bicyclic with 4N).
+    #   SMARTS `n1cncn1` matches the 1,2,4-triazole pattern (n-c-n-c-n connectivity)
+    #   and was validated on fluconazole, voriconazole (MATCH) and clotrimazole,
+    #   metronidazole, omeprazole, purine compounds (NO MATCH).
+    "Triazole":                 "n1cncn1",
+    # Thiazole: 5-membered aromatic ring with S (position 1) and N (position 3).
+    #   1,3-Thiazole isomer; SMARTS covers BOTH free thiazole (N-unsubstituted)
+    #   AND N-substituted variants.  Key scaffold in ritonavir-class CYP3A4
+    #   inhibitors (HIV protease inhibitors used as pharmacokinetic boosters) where
+    #   the thiazole N coordinates heme Fe(III) analogously to imidazole/triazole.
+    #   Also present in meloxicam (COX substrate), sulfathiazole (antibacterial),
+    #   and various kinase inhibitors.  Substructure of benzothiazole (also matched).
+    #   Validated on ritonavir SMILES (2 matches for the 2 thiazole rings) and
+    #   confirmed NO match for imidazole, triazole, thiophene, or oxazole.
+    "Thiazole":                 "c1cncs1",
+    # Benzimidazole: benzo[d]imidazole — benzene fused to imidazole.
+    #   Covers both 1H-benzimidazole and N-substituted variants via [nH,n].
+    #   Key scaffold in proton pump inhibitors (omeprazole, lansoprazole),
+    #   anthelmintic tubulin binders (mebendazole, albendazole), and some
+    #   kinase inhibitors.  Contains an imidazole substructure (also detected
+    #   separately by the Imidazole pattern) — hierarchical overlap is intentional.
+    #   Validated: matches omeprazole, mebendazole, N-methyl-benzimidazole;
+    #   does NOT match purine, indole, benzoxazole, or thiazole.
+    "Benzimidazole":            "c1ccc2[nH,n]cnc2c1",
+    # Pyrimidine: 1,3-diazine — 6-membered aromatic ring with N at positions 1,3.
+    #   Core heteroaromatic of ATP-competitive PI3K/mTOR inhibitors (paired with
+    #   a morpholine hinge-binder) and many kinase scaffolds. Scaffold marker
+    #   only (target_classes=[]): pyrimidine alone is far too promiscuous to vote.
+    #   mTOR voting is gated on the Morpholine + (Pyrimidine | Triazine) combo in
+    #   target_predictor.py. Substructure of Purine (fused) — hierarchical overlap
+    #   is intentional and harmless because it casts no target votes.
+    "Pyrimidine":               "c1cncnc1",
+    # Triazine: 1,3,5-triazine — 6-membered aromatic ring with three symmetric N.
+    #   Replaces pyrimidine as the hinge-anchoring heteroarene in the
+    #   morpholino-triazine PI3K/mTOR class (gedatolisib, PF-04691502). Scaffold
+    #   marker only; voting handled by the morpholino-diazine conditional rule.
+    "Triazine":                 "c1ncncn1",
     # Indole: bicyclic N-H aromatic heterocycle (pyrrole fused to benzene).
     # Defining scaffold of tryptamine alkaloids (serotonin, melatonin,
     # vincristine, psilocybin). Excluded from Secondary amine by !$(Nc).
@@ -120,6 +172,12 @@ FG_SMARTS: dict[str, str] = {
     #   Asp/Glu-lined S1 pocket of serine proteases (thrombin, trypsin, factor Xa).
     #   Also present in some antiparasitic drugs. Not a guanidine (only 2 N on C).
     "Benzamidine":              "[NX3H2][CX3](=[NX2H1])c",
+    # Guanidine: -N-C(=N)-N- (three N on the central C). Arginine side-chain
+    #   mimetic; like Benzamidine it complements the Asp-lined S1 pocket of
+    #   serine proteases (thrombin / trypsin / factor Xa), but via the
+    #   guanidinium rather than an aryl amidine. Distinct from Benzamidine
+    #   (2 N on C) and matches both neutral and protonated guanidinium.
+    "Guanidine":                "[NX3][CX3](=[NX2])[NX3]",
 
     # ── Sulfur ────────────────────────────────────────────────────────────────
     # Thiol: nucleophilic, metal-coordinating (Cys active sites)
@@ -159,6 +217,13 @@ FG_SMARTS: dict[str, str] = {
     "Phenyl ring":              "c1ccccc1",
     "Coumarin":                 "O=c1ccc2ccccc2o1",
     "Chromone":                 "O=c1ccoc2ccccc12",
+    # Anthraquinone (9,10-dioxoanthracene): planar tricyclic quinone. Defining
+    #   DNA-intercalating pharmacophore of the anthracycline topoisomerase-II
+    #   poisons (doxorubicin, daunorubicin, epirubicin, idarubicin) and
+    #   mitoxantrone. The flat polycyclic system stacks between base pairs while
+    #   the drug stabilises the Topo-II–DNA cleavage complex. Specific enough to
+    #   vote (matches only the anthracycline core, not isolated quinones).
+    "Anthraquinone":            "O=C1c2ccccc2C(=O)c2ccccc21",
 
     # ── Halogen & reactive warheads ───────────────────────────────────────────
     "Halogen":                  "[F,Cl,Br,I]",

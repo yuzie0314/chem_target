@@ -140,10 +140,113 @@ def _detect_steroid_core(mol: Chem.Mol) -> bool:
     return False
 
 
+def _detect_fused_azolo_diazine(mol: Chem.Mol) -> bool:
+    """Detect a fused 5-6 N-bicyclic aromatic core (azole fused to a diazine).
+
+    Returns True when the molecule contains an aromatic 5-membered ring with
+    >= 2 ring nitrogens fused (sharing exactly one bond / two atoms) to an
+    aromatic 6-membered ring with >= 2 ring nitrogens.
+
+    This recognises the purine / triazolopyrimidine / pyrazolopyrimidine /
+    imidazopyrimidine family — the flat purine-mimetic scaffold that defines
+    adenosine-receptor ligands (and is shared by xanthines and many fused
+    ATP-pocket binders).  Implemented in Python rather than SMARTS because
+    fused-ring N-count predicates across two rings are awkward and brittle to
+    express with the ``rN`` SSSR primitive (cf. ``_detect_steroid_core``).
+
+    This is a *routing-only* marker: it is intentionally NOT registered in
+    fg_database.json, so it casts no IDF-weighted votes and does not shift the
+    IDF denominator.  It is consumed solely by the pyrimidine router in
+    utils/target_predictor.py.
+
+    Args:
+        mol: RDKit molecule object (caller must ensure mol is not None).
+
+    Returns:
+        True if at least one fused 5(>=2N)-6(>=2N) aromatic ring pair exists.
+    """
+    ri = mol.GetRingInfo()
+    arom_rings = [
+        set(r) for r in ri.AtomRings()
+        if all(mol.GetAtomWithIdx(i).GetIsAromatic() for i in r)
+    ]
+
+    def n_count(ring: set[int]) -> int:
+        return sum(1 for i in ring if mol.GetAtomWithIdx(i).GetAtomicNum() == 7)
+
+    for a in arom_rings:
+        for b in arom_rings:
+            if a is b:
+                continue
+            if len(a & b) != 2:          # fused = share exactly one bond
+                continue
+            if len(a) == 5 and len(b) == 6 and n_count(a) >= 2 and n_count(b) >= 2:
+                return True
+    return False
+
+
 # ── Python-based FG detectors (for FGs that cannot use SMARTS) ───────────────
 
 _PYTHON_DETECTORS: dict[str, Callable[[Chem.Mol], bool]] = {
     "Steroid": _detect_steroid_core,
+    "Fused azolo-diazine": _detect_fused_azolo_diazine,
+}
+
+
+# ── Annotation-only fused-N-heteroaromatic scaffold cores (方案 4) ─────────────
+#
+# These label fused heteroaromatic *cores* that the FG_SMARTS layer would
+# otherwise see only as a bare "Phenyl ring".  They are ANNOTATION-ONLY:
+#   • NOT in FG_SMARTS        → not a column in the BioLiP residue table
+#   • NOT in fg_database.json → cast no IDF-weighted votes, no IDF shift
+#   • not consumed by any conditional rule (unlike "Fused azolo-diazine", which
+#     drives the pyrimidine router)
+# Their sole purpose is richer, mechanistically-correct scaffold reporting (and
+# infrastructure for future rules).  Adding them cannot change benchmark scores.
+# Hierarchical overlap with Pyrimidine / Phenyl ring is intentional.
+_SCAFFOLD_ANNOTATIONS: dict[str, str] = {
+    "Quinazoline":        "c1ccc2ncncc2c1",        # gefitinib/erlotinib/lapatinib kinase core
+    "Pyrrolopyrimidine":  "c1cc2cncnc2[nH,n]1",    # 7-deazapurine kinase hinge (ruxolitinib)
+    "Pyridopyrimidine":   "c1ccc2ncncc2n1",        # piritrexim / dihydrofolate-reductase class
+    "Benzoxazole":        "c1ccc2ocnc2c1",         # benzo[d]oxazole scaffold
+}
+
+_SCAFFOLD_PATTERNS: dict[str, Chem.Mol] = {
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in _SCAFFOLD_ANNOTATIONS.items()
+    if Chem.MolFromSmarts(smarts) is not None
+}
+
+
+# ── Routing-only mechanistic warhead markers ─────────────────────────────────
+#
+# Same contract as _SCAFFOLD_ANNOTATIONS (routing-only: not in FG_SMARTS, not in
+# fg_database.json → no BioLiP column, no IDF shift), but these are reactive
+# *warheads* rather than ring scaffolds.  They are consumed by conditional rules
+# in target_predictor.py (currently the MAO rule).
+#   • Propargylamine: N-CH2-C#CH — irreversible MAO inhibitor warhead that forms a
+#     covalent adduct with the FAD cofactor (selegiline, rasagiline, pargyline,
+#     clorgiline).
+#   • Hydrazine: N-N single bond — MAO-inhibitor hydrazine/hydrazide class
+#     (phenelzine, isocarboxazid, iproniazid).
+_WARHEAD_ANNOTATIONS: dict[str, str] = {
+    "Propargylamine": "[CH1]#CC[NX3]",
+    "Hydrazine":      "[NX3;!$(N=*)][NX3;!$(N=*)]",
+    # Non-aryl nitrile: a nitrile whose carbon is NOT bonded to an aromatic ring.
+    # This is the mechanistically-relevant cysteine-protease warhead context —
+    # the electrophilic nitrile that forms a reversible thioimidate with the
+    # catalytic Cys25 (odanacatib / cathepsin-K class) is aliphatic/heteroatom-
+    # bound.  An *aryl* nitrile (e.g. enobosarm, bicalutamide, aryl-CN androgen
+    # ligands) is an inert aromatic substituent, NOT a covalent warhead — using
+    # bare "Nitrile" made the cathepsin rule mis-grab those, so the rule now keys
+    # on this marker instead of the generic Nitrile FG.
+    "Non-aryl nitrile": "[!c;!#1][CX2]#[NX1]",
+}
+
+_WARHEAD_PATTERNS: dict[str, Chem.Mol] = {
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in _WARHEAD_ANNOTATIONS.items()
+    if Chem.MolFromSmarts(smarts) is not None
 }
 
 
@@ -160,8 +263,11 @@ def detect_smarts(smiles: str) -> list[str]:
         smiles: Input molecule as SMILES string.
 
     Returns:
-        List of FG names (keys of FG_SMARTS plus "Steroid") present in the
-        molecule.  Empty list if SMILES is invalid or no FG matches.
+        List of names present: FG_SMARTS keys, Python detectors ("Steroid",
+        "Fused azolo-diazine"), and annotation-only scaffold cores
+        (Quinazoline / Pyrrolopyrimidine / Pyridopyrimidine / Benzoxazole).
+        Only FG_SMARTS keys + Steroid feed residue scoring; the rest are
+        routing/annotation. Empty list if SMILES is invalid or nothing matches.
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -177,6 +283,16 @@ def detect_smarts(smiles: str) -> list[str]:
     for fg_name, detector in _PYTHON_DETECTORS.items():
         if detector(mol):
             results.append(fg_name)
+
+    # Annotation-only fused-N-heteroaromatic scaffold cores (no scoring impact)
+    for name, pattern in _SCAFFOLD_PATTERNS.items():
+        if pattern is not None and mol.GetSubstructMatches(pattern):
+            results.append(name)
+
+    # Routing-only mechanistic warhead markers (consumed by conditional rules)
+    for name, pattern in _WARHEAD_PATTERNS.items():
+        if pattern is not None and mol.GetSubstructMatches(pattern):
+            results.append(name)
 
     return results
 
@@ -199,21 +315,25 @@ def detect_smarts_table(compounds: dict[str, str]) -> pd.DataFrame:
     """
     rows: dict[str, dict[str, int]] = {}
 
+    # Parse each SMILES once (avoids O(n_fg × n_compounds) re-parsing).
+    mols: dict[str, Chem.Mol | None] = {
+        comp_name: Chem.MolFromSmiles(smiles)
+        for comp_name, smiles in compounds.items()
+    }
+
     # SMARTS-based FGs
     for fg_name, pattern in _SMARTS_PATTERNS.items():
-        row: dict[str, int] = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = len(mol.GetSubstructMatches(pattern)) if mol else 0
-        rows[fg_name] = row
+        rows[fg_name] = {
+            comp_name: len(mol.GetSubstructMatches(pattern)) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     # Python-based FGs (e.g. Steroid) — count is 0 or 1
     for fg_name, detector in _PYTHON_DETECTORS.items():
-        row = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = int(detector(mol)) if mol else 0
-        rows[fg_name] = row
+        rows[fg_name] = {
+            comp_name: int(detector(mol)) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     df = pd.DataFrame(rows).T
     df.index.name = "fg_name"
@@ -250,12 +370,17 @@ def detect(compounds: dict[str, str]) -> pd.DataFrame:
     """
     rows: dict[str, dict[str, int]] = {}
 
+    # Parse each SMILES once (avoids O(n_fg × n_compounds) re-parsing).
+    mols: dict[str, Chem.Mol | None] = {
+        comp_name: Chem.MolFromSmiles(smiles)
+        for comp_name, smiles in compounds.items()
+    }
+
     for fg_code, fg_func in _FG_FUNCTIONS.items():
-        row: dict[str, int] = {}
-        for comp_name, smiles in compounds.items():
-            mol = Chem.MolFromSmiles(smiles)
-            row[comp_name] = fg_func(mol) if mol else 0
-        rows[fg_code] = row
+        rows[fg_code] = {
+            comp_name: fg_func(mol) if mol else 0
+            for comp_name, mol in mols.items()
+        }
 
     df = pd.DataFrame(rows).T
     df.index.name = "fg_code"

@@ -1,0 +1,5 @@
+outs:
+- md5: 2252f40606924c639304d4e23d8bc869
+  size: 1986460
+  hash: md5
+  path: residue_3d_poses.json

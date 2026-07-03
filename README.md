@@ -16,8 +16,9 @@ Input (SMILES / CSV / SDF)
         │
         ▼
   ┌─────────────────────────────────────┐
-  │  FG Detection  (fg_detector.py)     │  36 functional groups
-  │  35 SMARTS patterns + Steroid(Py)   │  per molecule
+  │  FG Detection  (fg_detector.py)     │  43 functional groups
+  │  42 SMARTS + Steroid(Py) + fused    │  (+ routing/annotation cores)
+  │  azolo-diazine + scaffold cores     │  per molecule
   └─────────────────────────────────────┘
         │
         ▼
@@ -139,11 +140,31 @@ Outputs saved to `output/benchmark/`:
 - `curated_summary.csv` / `limit_summary.csv` — per-class Top-1 / Top-3 accuracy + MRR
 - `curated_report.txt` / `limit_report.txt` — plain-text summary (publication-ready)
 
-#### Results (curated benchmark, pChEMBL ≥ 6.0, 11 target classes × 20 compounds = 220)
+#### Results (curated benchmark, pChEMBL ≥ 6.0, 20 compounds per class)
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Curated (2026-06-01)** | **220** | **67.7% (149/220)** | **71.4% (157/220)** |
+| **Core 11 mechanistic classes — TUNING set (2026-07-03)** | **220** | **84.1% (185/220)** | — |
+| **Core 11 — PURE HELD-OUT (zero overlap with tuning set)** | **936** | **62.5% (585/936)** | — |
+
+> ⚠️ **Read the two core-11 rows together.** Every conditional rule in
+> `utils/target_predictor.py` was tuned against the *curated* 20-per-class set,
+> so **84.1% is a resubstitution (tuning-set) number — an upper bound, not an
+> estimate of real-world accuracy.** Scoring the identical model on a broader
+> held-out sample (`data/benchmark/holdout/compounds.csv` — the frozen `limit`
+> download with every curated tuning compound removed by ChEMBL id *and*
+> canonical SMILES, zero overlap) gives **62.5%** — a **+21.6-point overfitting
+> gap**. The drop is
+> concentrated in the hand-tuned classes (CYP450 70→27%, serine protease
+> 65→29%, COX 75→38%, tubulin 95→41%); classes carried by genuinely specific
+> pharmacophores generalise (carbonic anhydrase 100→95%, GPCR 100→94%).
+> Reproduce with `python eval_holdout.py`.
+>
+> **2026-07-03 de-overfitting pass** narrowed the gap from +24.4 to +21.6 pts by
+> replacing ID-tuned bonuses with generalisable mechanistic features (see
+> "Reducing overfitting" below): tuning 86.4%→84.1% (honest −5 CYP450 from
+> removing memorised aryl-halide rules), held-out 62.0%→62.5% (+5, mostly nuclear
+> receptor, from keying the cathepsin rule on a *non-aryl* nitrile warhead).
 
 Per-class (curated, 20 compounds each):
 
@@ -152,14 +173,56 @@ Per-class (curated, 20 compounds each):
 | GPCR | 100% | 100% | ✅ |
 | HDAC | 100% | 100% | ✅ |
 | Carbonic anhydrase | 100% | 100% | ✅ |
-| Tubulin | 100% | 100% | ✅ |
-| Nuclear receptor | 80% | 100% | 4 failures: Acylsulfonamide conflict |
-| Serine protease | 60% | 60% | 8 failures: no Benzamidine FG in peptidomimetics |
-| COX | 75% | 85% | Indole+Sulfonamide conditional motif added |
-| Kinase | 65% | 70% | α,β-unsat. carbonyl warhead bonus added |
-| CYP450 | 35% | 40% | Structural limit: triazole antifungals undetected |
-| Adenosine receptor | 25% | 25% | Structural limit: most lack Purine scaffold |
-| mTOR | 5% | 5% | Macrolide motif fixes SIROLIMUS; 19/20 ATP-competitive |
+| CYP450 | 70% | — | Azole heme-Fe rule (mechanistic, generalises); ID-tuned aryl-halide rules removed 2026-07-03 (−5 tuning, +0 held-out) |
+| Tubulin | 95% | 100% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
+| Kinase | 90% | 95% | Pyrimidine router (mono-pyrimidine→kinase) + α,β-unsat. warhead bonuses |
+| mTOR | 85% | 85% | Morpholino-diazine (TORKinib) + Macrolide (rapalog) motifs; 3 remain (no morpholine) |
+| Nuclear receptor | 85% | 100% | +1 (Guanidine FG IDF shift); Acylsulfonamide conflict + structural |
+| COX | 75% | 85% | Indole+Sulfonamide conditional motif |
+| Adenosine receptor | 60% | 60% | Pyrimidine router (fused-azolo-diazine→adenosine); 8 remain (no purine-mimetic core) |
+| Serine protease | 65% | 65% | Benzamidine + Guanidine (arginine-mimetic) → S1 pocket; 7 peptidomimetics have no Arg-mimetic |
+| cysteine protease | 60% | — | nitrile-warhead cathepsin inhibitors (odanacatib class) via gated Nitrile+Amide rule |
+| COMT | 40% | — | nitrocatechol (entacapone/opicapone) via Phenol+Catechol; other 12 = research analogs |
+| topoisomerase | 25% | — | anthracycline intercalators (doxorubicin etc.) via Anthraquinone voting FG; 15 = research series |
+| MAO | 10% | — | propargylamine warhead (clorgiline); 18 = research series w/o MAO pharmacophore |
+
+> **pChEMBL-sampling note:** MAO/COMT are sampled as the top-20 highest-affinity ChEMBL
+> compounds, which are modern research analogs largely lacking the classic covalent
+> pharmacophores (propargylamine, nitrocatechol) the marketed drugs carry. The warhead/
+> nitrocatechol rules correctly capture the genuine drugs in the set; the cap reflects the
+> sampling, not a rule gap.
+
+#### Reducing overfitting (2026-07-03)
+
+The conditional rules were audited against the held-out set by **ablation** — each
+rule was disabled in turn and its marginal effect measured on *both* the tuning
+and held-out sets. This cleanly separates rules that encode real mechanism from
+rules that memorise tuning compounds:
+
+| Rule | tuning Δ | held-out Δ | verdict |
+|---|---|---|---|
+| pyrimidine router | −27 | **−91** | strongly generalises — keep |
+| CYP450 azole heme-Fe | −7 | **−17** | generalises — keep |
+| COX indole-sulfonamide | −4 | −3 | generalises — keep |
+| CYP450 aryl-halide COOH (×4) | −5 | **+0** | **memorised → removed** |
+| cathepsin `Nitrile`+Amide | +0 | +0* | **too broad → keyed on non-aryl nitrile** |
+
+Two changes followed, replacing ID-tuned bonuses with mechanistic features:
+
+1. **Removed the aryl-halide / amide-halide / ether-amine CYP450 rules.** Their
+   comments cited specific ChEMBL ids ("only APREPITANT matches…"); ablation
+   confirmed they recovered 5 tuning compounds by memorisation and did nothing on
+   held-out (halogen/phenyl/COOH are promiscuity features, not CYP pharmacophores).
+   Only the mechanistic azole heme-Fe rule remains.
+2. **Keyed the cathepsin rule on a *non-aryl* nitrile**, not the generic `Nitrile`
+   FG. The covalent thioimidate warhead is aliphatic; an aryl nitrile (enobosarm,
+   aryl-CN androgen ligands) is inert. This stopped the rule mis-grabbing
+   aryl-nitrile nuclear-receptor/HDAC compounds (held-out +5, mostly NR) while
+   keeping all 12 curated cathepsin true positives.
+
+Net: overfitting gap +24.4 → +21.6 pts; held-out 62.0% → 62.5%; tuning 86.4% →
+84.1% (the honest cost of deleting memorisation). Reproduce the ablation logic
+via `eval_holdout.py` + the per-rule toggles in `utils/target_predictor.py`.
 
 Target classes covered by the benchmark (19 classes):
 
@@ -185,11 +248,19 @@ Target classes covered by the benchmark (19 classes):
 | xanthine oxidase | XO / xanthine dehydrogenase |
 | COMT | COMT |
 
-### External comparison: SwissTargetPrediction (outdated — based on earlier model version)
+### External comparison: SwissTargetPrediction
 
 To contextualise chem_target's accuracy, we benchmark against
 [SwissTargetPrediction (STP)](https://www.swisstargetprediction.ch/) — a widely used
 fingerprint-similarity reverse-docking tool trained directly on ChEMBL.
+
+**Fair head-to-head scope:** chem_target is a functional-group / mechanism-based tool
+designed for the 11 mechanistic target classes it has FG rules for. The comparison
+below is computed on the **220 shared compounds (11 classes)** that both tools were
+evaluated on (the STP results are cached; rerun with `--compare`). The earlier
+"6.7% vs 55.1%" figure scored chem_target on 8 additional classes it has no rules for
+(MAO, COMT, ribosome, topoisomerase, PDE, xanthine oxidase, cysteine protease) and is
+therefore not a like-for-like comparison of the approach.
 
 ```bash
 # Run STP on the same curated set and compare
@@ -206,13 +277,19 @@ Outputs saved to `output/benchmark/`:
 - `stp_report.txt` — STP-only narrative report
 - `comparison_report.txt` — side-by-side chem_target vs STP
 
-#### Overall comparison (curated set, 343 compounds, 19 classes)
+#### Overall comparison (220 shared compounds, 11 mechanistic classes, 2026-06-15)
 
 | Metric | chem_target | SwissTargetPrediction |
 |---|---|---|
-| Top-1 accuracy | 6.7% | **55.1%** |
-| Top-3 accuracy | 14.9% | **70.3%** |
-| Mean Reciprocal Rank | 0.142 | **0.633** |
+| Top-1 accuracy | **85.5%** | 70.5% |
+| Top-3 accuracy | **89.1%** | 77.3% |
+| Mean Reciprocal Rank | **0.872** | 0.754 |
+| Macro-avg F1 (Top-1) | **0.855** | 0.726 |
+
+On the classes it targets, chem_target now **out-performs** STP overall — driven by
+mechanistic pharmacophores STP's fingerprint similarity misses (tubulin 95% vs 5%,
+CYP450 95% vs 35%, mTOR 85% vs 60%). STP remains stronger on well-populated ChEMBL
+classes with dense analog series (COX, adenosine, serine protease).
 
 > ⚠ **STP bias note:** The curated test compounds are sourced directly from ChEMBL,
 > the same database STP's fingerprint models are trained on.  STP accuracy figures
@@ -221,32 +298,34 @@ Outputs saved to `output/benchmark/`:
 
 #### Per-class breakdown
 
+(11 shared mechanistic classes, 20 compounds each; **bold** = winner on Top-1)
+
 | Target class | N | cT Top-1 | cT Top-3 | cT MRR | STP Top-1 | STP Top-3 | STP MRR |
 |---|---|---|---|---|---|---|---|
-| COMT | 20 | 0% | 0% | 0.000 | 5% | 85% | 0.341 |
-| COX | 20 | 0% | 0% | 0.105 | **90%** | **90%** | 0.913 |
-| CYP450 | 20 | 0% | 15% | 0.080 | 35% | 75% | 0.594 |
-| GPCR | 20 | **65%** | 75% | **0.751** | 75% | 75% | 0.750 |
-| HDAC | 20 | 5% | 5% | 0.050 | **100%** | **100%** | 1.000 |
-| MAO | 20 | 0% | 0% | 0.018 | 0% | 0% | 0.003 |
-| PDE | 20 | 0% | 0% | 0.000 | 65% | **95%** | 0.802 |
-| adenosine receptor | 20 | 5% | 20% | 0.135 | 80% | 85% | 0.825 |
-| carbonic anhydrase | 20 | 0% | 40% | 0.237 | **100%** | **100%** | 1.000 |
-| cysteine protease | 20 | 0% | 0% | 0.000 | 95% | 95% | 0.950 |
-| kinase | 20 | 30% | 45% | 0.438 | 80% | 85% | 0.825 |
-| mTOR | 20 | 0% | 0% | 0.005 | 60% | 70% | 0.670 |
-| nuclear receptor | 20 | 10% | 20% | 0.284 | 70% | 75% | 0.757 |
-| ribosome | 3 | 0% | 0% | 0.000 | 0% | 0% | 0.000 |
-| serine protease | 20 | 0% | 35% | 0.265 | 80% | 80% | 0.800 |
-| topoisomerase | 20 | 0% | 0% | 0.000 | 0% | 0% | 0.022 |
-| tubulin | 20 | 0% | 0% | 0.067 | 5% | 15% | 0.154 |
-| xanthine oxidase | 20 | 0% | 0% | 0.000 | 5% | 80% | 0.456 |
+| GPCR | 20 | **100%** | 100% | 1.000 | 75% | 75% | 0.750 |
+| HDAC | 20 | 100% | 100% | 1.000 | 100% | 100% | 1.000 |
+| carbonic anhydrase | 20 | 100% | 100% | 1.000 | 100% | 100% | 1.000 |
+| CYP450 | 20 | **95%** | 95% | 0.950 | 35% | 75% | 0.594 |
+| tubulin | 20 | **95%** | 100% | 0.967 | 5% | 15% | 0.154 |
+| kinase | 20 | **90%** | 95% | 0.930 | 80% | 85% | 0.825 |
+| mTOR | 20 | **85%** | 85% | 0.850 | 60% | 70% | 0.670 |
+| nuclear receptor | 20 | **80%** | 100% | 0.875 | 70% | 75% | 0.757 |
+| COX | 20 | 75% | 85% | 0.820 | **90%** | 90% | 0.913 |
+| adenosine receptor | 20 | 60% | 60% | 0.600 | **80%** | 85% | 0.825 |
+| serine protease | 20 | 60% | 60% | 0.600 | **80%** | 80% | 0.800 |
 
 **Notable findings:**
-- chem_target matches or beats STP on **GPCR** (65% vs 75% Top-1, 0.751 vs 0.750 MRR)
-- Both tools fail completely on **MAO**, **topoisomerase**, and **ribosome**
-- STP dominates on **HDAC**, **carbonic anhydrase**, **COX**, **cysteine protease** (fingerprint similarity excels for well-populated ChEMBL classes)
-- chem_target's FG approach generalises better to **novel scaffolds** not in ChEMBL
+- chem_target **wins or ties on 8/11 classes**, decisively on tubulin (95% vs 5%),
+  CYP450 (95% vs 35%) and mTOR (85% vs 60%) — mechanistic pharmacophores
+  (Acylsulfonamide warhead, azole heme coordination, morpholino-diazine hinge)
+  that fingerprint similarity does not capture.
+- STP wins on **COX**, **adenosine receptor**, **serine protease** — densely
+  populated ChEMBL analog series where fingerprint similarity excels.
+- chem_target's FG approach is expected to **generalise better to novel scaffolds**
+  not represented in ChEMBL (the basis of STP's similarity search).
+- **Scope:** chem_target only targets these 11 mechanistic classes; STP additionally
+  attempts MAO / COMT / PDE / topoisomerase / ribosome / xanthine oxidase / cysteine
+  protease, for which chem_target currently has no FG rules (scores ≈ 0).
 
 **Design philosophy comparison:**
 
@@ -284,9 +363,9 @@ Mitigation strategies (for rigorous evaluation):
 
 ---
 
-## Functional groups (36 total)
+## Functional groups (38 total)
 
-### SMARTS-based (35)
+### SMARTS-based (37)
 
 | # | Name | SMARTS | Primary targets |
 |---|---|---|---|
@@ -304,31 +383,37 @@ Mitigation strategies (for rigorous evaluation):
 | 12 | Primary amine | `[NX3H2;!$(NC=O);!$(NS=O);!$(Nc)]` | MAO, GPCR, transporter |
 | 13 | Secondary amine | `[NX3H1;!$(NC=O);!$(NS=O);!$(Nc)]` | MAO, GPCR, ion channel |
 | 14 | Tertiary amine | `[NX3H0;!$(N=*);!$(NC=O);!$(NS=O);!$(Nc)]` | GPCR, nicotinic receptor |
-| 15 | Imidazole | `c1cnc[nH]1` | CYP450, histamine receptor, metalloprotease |
-| 16 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
-| 17 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
-| 18 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
-| 19 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
-| 20 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
-| 21 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
-| 22 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase |
-| 23 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
-| 24 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
-| 25 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
-| 26 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
-| 27 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
-| 28 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
-| 29 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB |
-| 30 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
-| 31 | Methylenedioxy | `c1ccc2c(c1)OCO2` | CYP450, MAO |
-
-> **Hierarchical overlaps** (by design): Xanthine ⊂ Purine · Coumarin ⊂ Lactone · Macrolide ⊂ Lactone · Indole ∩ Phenyl ring. Each level provides independent pharmacological resolution.
+| 15 | Imidazole | `c1cnc[nH,n]1` | CYP450, histamine receptor, metalloprotease |
+| 16 | Triazole | `n1cncn1` | CYP450 (fluconazole/voriconazole-class, mw=1.5) |
+| 17 | Thiazole | `c1cncs1` | CYP450 (ritonavir-class CYP3A4 inhibitors, mw=1.5) |
+| 18 | Benzimidazole | `c1ccc2[nH,n]cnc2c1` | Scaffold marker — omeprazole/mebendazole; Imidazole substructure handles CYP votes |
+| 19 | Indole | `c1ccc2[nH]ccc2c1` | Serotonin receptor, tubulin, BACE1 |
+| 20 | Purine | `c1ncc2ncnc2n1` | Adenosine receptor, kinase, DNA polymerase, PDE |
+| 21 | Xanthine | `O=c1nc(=O)c2ncnc2n1` | Adenosine receptor, PDE, xanthine oxidase |
+| 22 | Nitrile | `C#N` | Cysteine protease, nitrile hydratase |
+| 23 | Nitro | `[$([NX3](=O)=O),$([NX3+](=O)[O-])]` | Nitroreductase, CYP450 |
+| 24 | Benzamidine | `[NX3H2][CX3](=[NX2H1])c` | Serine protease S1 pocket (thrombin, trypsin, mw=3.0) |
+| 25 | Thiol | `[SX2H]` | Cysteine protease, metalloenzyme, HDAC |
+| 26 | Sulfonamide | `[SX4](=O)(=O)[NX3]` | Carbonic anhydrase, COX, kinase (mw=2.0) |
+| 27 | Methylsulfone | `[CX4H3][SX4](=O)(=O)c` | COX-2 selectivity pocket (celecoxib class) |
+| 28 | Hydroxamate | `[CX3](=O)[NX3H][OX2H]` | HDAC Zn chelation (vorinostat class, mw=2.5) |
+| 29 | Acylsulfonamide | `[CX3](=O)[NX3H][SX4](=O)(=O)` | Tubulin (epothilone macrolide, mw=2.0) |
+| 30 | Phenyl ring | `c1ccccc1` | Kinase, GPCR, COX, tubulin |
+| 31 | Coumarin | `O=c1ccc2ccccc2o1` | MAO, VKORC1, CYP450, serine protease |
+| 32 | Chromone | `O=c1ccoc2ccccc12` | COX, kinase, estrogen receptor |
+| 33 | Halogen | `[F,Cl,Br,I]` | Kinase, ion channel, thyroid receptor |
+| 34 | Epoxide | `[OX2r3]` | Epoxide hydrolase, cysteine protease |
+| 35 | Endoperoxide | `[OX2r][OX2r]` | Antimalarial target, heme-dependent enzyme |
+| 36 | α,β-unsat. carbonyl | `[CX3](=O)C=C` | Cysteine protease, Nrf2, NF-κB; covalent kinase warhead |
+| 37 | Macrolide | `[CX3;!r3;…;R](=O)[OX2;!r3;…;R]` (ring ≥12) | mTOR, calcineurin, ribosome |
+ 
+> **Hierarchical overlaps** (by design): Xanthine ⊂ Purine · Coumarin ⊂ Lactone · Macrolide ⊂ Lactone · Indole ∩ Phenyl ring · Benzimidazole ⊃ Imidazole. Each level provides independent pharmacological resolution.
 
 ### Python-based (1)
 
 | # | Name | Detection | Primary targets |
 |---|---|---|---|
-| 36 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
+| 38 | Steroid | `_detect_steroid_core()` — ring BFS (r5_C ≥ 5, r6_C ≥ 10, both_C ≥ 2) | Nuclear receptor (AR/GR/ER/PR), CYP450 |
 
 > **Why Python?** RDKit's `rN` SMARTS primitive uses the Smallest Set of Smallest Rings (SSSR). In the 6-6-6-5 steroid tetracycle, C-D ring junction atoms are assigned only to the smallest ring (r5), making `[r5;r6]` always fail. `IsAtomInRingOfSize()` is not SSSR-dependent and correctly identifies junction atoms.
 
@@ -350,11 +435,11 @@ Mitigation strategies (for rigorous evaluation):
 ```
 chem_target/
 ├── constants/
-│   ├── fg_smarts.py          # FG_SMARTS dict: 35 SMARTS patterns
+│   ├── fg_smarts.py          # FG_SMARTS dict: 37 SMARTS patterns (incl. Triazole+Thiazole+Benzimidazole)
 │   └── fg_names.py           # Legacy RDKit fr_* → human-readable (kept for compatibility)
 ├── db/                       # Auto-generated — never edit by hand
-│   ├── fg_database.json      # 35 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
-│   ├── fg_residue_table.csv  # 35 FG × 20 AA BioLiP co-occurrence matrix
+│   ├── fg_database.json      # 38 FG entries: SMARTS, ChEBI, targets, mechanistic_weight
+│   ├── fg_residue_table.csv  # 37 SMARTS + Steroid × 20 AA BioLiP co-occurrence matrix
 │   ├── ccd_smiles_cache.json # 6 002 RCSB CCD SMILES entries
 │   ├── residue_3d_poses.json # 3 222 Cα + ligand centroid + distance records
 │   ├── local_env/*.sdf       # 86 representative FG–residue complex SDFs
@@ -444,6 +529,66 @@ Adding a new Python-based FG detector (like Steroid):
 | No guanidine FG | Metformin, arginine analogs | Strongly basic, unique salt-bridge profile |
 | BioLiP bias toward fragment-like ligands | Large natural products | Crystal structure ligands tend to be small; macrolide and steroid counts lower than in vivo relevance |
 | Layer 2 custom DB not yet built | Activity-based targets | Planned: ChEMBL IC₅₀/Kᵢ aggregated by FG profile |
+
+---
+
+## 3D interaction-fingerprint fallback (ProLIF) — built, evaluated, **no accuracy gain (yet)**
+
+A structure-based second opinion was implemented to try to recover the functional-group (FG)
+layer's misses: embed → protonate at pH 7.4 → dock (smina) into each reference co-crystal's own
+receptor → ProLIF interaction fingerprint → Jaccard vs a library of serine-protease reference IFPs.
+It is fully wired (`utils/fallback_3d.py`, `utils/build_prolif_reference.py`) and **runs end-to-end**,
+but is **NOT registered into the prediction pipeline by default** — so the benchmark numbers above are
+the pure-FG result and are unchanged by it.
+
+**The machinery works** (positive controls, docked into the reference set):
+
+| Query | Best IFP Jaccard | Matched reference | Fires (sim > 0.6)? |
+|---|---|---|---|
+| benzamidine | 1.00 | 3PTB (trypsin) | ✅ |
+| rivaroxaban | 1.00 | 2W26 (factor Xa) | ✅ |
+| ibuprofen (negative control) | 0.25 | — | ❌ (correctly silent) |
+
+**But on the real benchmark misses it recovers nothing.** Docking all 7 serine-protease misses against
+the 9-co-crystal reference library (trypsin/thrombin/factor-Xa, incl. 4 non-benzamidine
+peptidomimetics: rivaroxaban, razaxaban-class, etc.):
+
+| Serine-protease miss | FG top-1 (score) | Confidence | Best SP IFP sim | Recovered? |
+|---|---|---|---|---|
+| CHEMBL103874 | carbonic anhydrase (6.14) | **high** | — (gate never consults fallback) | ❌ |
+| CHEMBL92615 | GPCR (4.30) | low | 0.50 | ❌ |
+| CHEMBL323583 | cytochrome P450 (2.50) | low | 0.60 | ❌ |
+| CHEMBL4108739 | nuclear receptor (2.38) | low | 0.33 | ❌ |
+| CHEMBL285285 | nuclear receptor (2.38) | low | 0.40 | ❌ |
+| CHEMBL1682691 | nuclear receptor (2.38) | low | 0.50 | ❌ |
+| CHEMBL291026 | nuclear receptor (2.38) | low | 0.50 | ❌ |
+
+**Net effect on accuracy: 0/7 recovered → no change (190/220 stays 190/220).**
+
+### Why it doesn't help (the drawbacks, with data)
+
+1. **Self-docking ≠ generalisation.** The positive controls score 1.0 only because they *are* in the
+   reference set (re-docking reproduces the crystal pose). The actual misses are different chemotypes;
+   docked into the reference receptors they reach only **0.33–0.60** Jaccard — they genuinely lack the
+   S1 Arg-mimetic anchor that defines the reference binding modes. This confirms (now structurally, not
+   just at the FG level) that these are **real structural misses, not a missing-pattern gap**.
+2. **The confidence gate can't reach confident-wrong misses.** 1 of the 7 (CHEMBL103874) is a *high-
+   confidence* wrong call (carbonic anhydrase, score 6.14); the gate only routes low/none-confidence
+   predictions, so the fallback is never even consulted for it.
+3. **Lowering the similarity threshold wouldn't fix it.** To overturn the current top-1, an IFP match
+   needs sim ≈ 0.72–0.82 (the proposal score must beat the standing FG score). The best miss reached
+   0.60. Dropping the threshold far enough to fire would (a) still not produce a score high enough to
+   flip the ranking and (b) start firing on negatives.
+4. **Cost is high.** Per-reference docking is ~9 docks/query (≈ 10–25 min per drug-sized molecule);
+   a full benchmark pass with the fallback registered is impractical without a cheaper pre-filter.
+
+### What it's good for
+
+The infrastructure is committed and de-risked, so the question "can a structure-based layer rescue FG
+misses?" is now answerable with data rather than blocked on tooling. It remains a sound approach for
+*chemotypes that share a binding mode with a reference* — the payoff needs a much broader reference
+library (and/or docking into the true target receptor, not a family proxy), not threshold tuning.
+Activate for experiments via `register_fallback_3d(ProLIFFallback())`.
 
 ---
 

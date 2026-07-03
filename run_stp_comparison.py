@@ -91,32 +91,17 @@ _STP_PREDICT_URL = "https://www.swisstargetprediction.ch/predict.php"
 _STP_ORGANISM    = "Homo_sapiens"
 _REQUEST_DELAY   = 2.0   # seconds between STP submissions (rate-limit courtesy)
 
-# ── ChEMBL → benchmark class mapping ──────────────────────────────────────────
-# Derived from TARGET_CLASS_MAP in run_benchmark.py.
+# ── ChEMBL → benchmark class mapping (SINGLE SOURCE OF TRUTH) ─────────────────
+# Imported directly from run_benchmark.TARGET_CLASS_MAP so the STP comparison and
+# the internal benchmark can never diverge again.  A previous local copy here had
+# WRONG ChEMBL IDs for the 7 enzyme classes (e.g. MAO -> CHEMBL2828 returned
+# DARUNAVIR; topoisomerase -> CHEMBL3952 returned the opioid ligand JDTIC),
+# silently mislabelling those compounds.  run_benchmark's IDs are the verified
+# correct targets (MAO=CHEMBL1951/2039 -> clorgiline; COMT=CHEMBL2023 -> entacapone).
+#
 # When a ChEMBL ID appears in multiple classes (e.g. A1R in GPCR and adenosine
 # receptor), ALL matching classes are stored so either can score a hit.
-
-_TARGET_CLASS_MAP: dict[str, list[str]] = {
-    "COX":               ["CHEMBL230", "CHEMBL220", "CHEMBL221"],
-    "kinase":            ["CHEMBL203", "CHEMBL5145", "CHEMBL301", "CHEMBL2842"],
-    "GPCR":              ["CHEMBL210", "CHEMBL217", "CHEMBL218", "CHEMBL226", "CHEMBL251"],
-    "serine protease":   ["CHEMBL204", "CHEMBL209"],
-    "cysteine protease": ["CHEMBL4523", "CHEMBL3227"],
-    "nuclear receptor":  ["CHEMBL1871", "CHEMBL206", "CHEMBL2034", "CHEMBL3151"],
-    "MAO":               ["CHEMBL2366517", "CHEMBL2828"],
-    "HDAC":              ["CHEMBL325", "CHEMBL1865", "CHEMBL3192"],
-    "adenosine receptor":["CHEMBL226", "CHEMBL251"],
-    "carbonic anhydrase":["CHEMBL205", "CHEMBL3729"],
-    "CYP450":            ["CHEMBL340", "CHEMBL1952", "CHEMBL3356"],
-    "PDE":               ["CHEMBL1827", "CHEMBL3769"],
-    "mTOR":              ["CHEMBL2842"],
-    "tubulin":           ["CHEMBL379"],
-    "VKORC1":            ["CHEMBL1953583"],
-    "topoisomerase":     ["CHEMBL3952", "CHEMBL3191"],
-    "ribosome":          ["CHEMBL612558"],
-    "xanthine oxidase":  ["CHEMBL1916"],
-    "COMT":              ["CHEMBL4203"],
-}
+from run_benchmark import TARGET_CLASS_MAP as _TARGET_CLASS_MAP  # noqa: E402
 
 # Invert: ChEMBL ID → list of benchmark classes (one ID may map to several)
 _CHEMBL_TO_CLASSES: dict[str, list[str]] = defaultdict(list)
@@ -643,8 +628,16 @@ def generate_report(results: list[dict],
 
 def generate_comparison(stp_stats: dict[str, dict],
                         chem_results_csv: Path = _CHEM_RESULTS,
-                        out_report: Path = _CMP_REPORT) -> None:
-    """Produce a side-by-side chem_target vs STP comparison report."""
+                        out_report: Path = _CMP_REPORT,
+                        restrict_names: set[str] | None = None) -> None:
+    """Produce a side-by-side chem_target vs STP comparison report.
+
+    Args:
+        restrict_names: if given, only chem_target compounds whose name is in
+            this set are counted.  Pass the set of compounds STP also evaluated
+            so the head-to-head is a true intersection (neither tool penalised
+            for compounds the other never ran).
+    """
     if not chem_results_csv.exists():
         print(f"WARNING: {chem_results_csv} not found — skipping comparison.")
         return
@@ -657,6 +650,9 @@ def generate_comparison(stp_stats: dict[str, dict],
 
     with open(chem_results_csv, encoding="utf-8") as f:
         for row in csv.DictReader(f):
+            if restrict_names is not None and \
+                    row.get("compound_name") not in restrict_names:
+                continue
             cls = (row.get("true_target_class") or
                    row.get("true_class") or "unknown")
             if cls not in chem_stats:
@@ -833,6 +829,22 @@ def _load_stp_results() -> list[dict]:
     return results
 
 
+def _load_chem_compound_names(chem_results_csv: Path = _CHEM_RESULTS) -> set[str]:
+    """Return the set of compound names chem_target actually evaluated.
+
+    Used to restrict the STP comparison to the *intersection* of compounds both
+    tools ran, so the head-to-head is fair.  chem_target's curated set covers the
+    11 mechanistic classes it has FG rules for; STP additionally attempts other
+    classes.  Comparing on the shared set avoids penalising chem_target for
+    classes it does not target (and vice-versa).
+    """
+    if not chem_results_csv.exists():
+        return set()
+    with open(chem_results_csv, encoding="utf-8") as f:
+        return {row["compound_name"] for row in csv.DictReader(f)
+                if row.get("compound_name")}
+
+
 def _rebuild_stats_from_results(results: list[dict]) -> dict[str, dict]:
     """Recompute per-class stats from saved per-compound results."""
     stats: dict[str, dict] = {}
@@ -881,8 +893,29 @@ def main() -> None:
     elif args.compare:
         print("=== Generating comparison report ===")
         results = _load_stp_results()
+        # Fair head-to-head: restrict STP to compounds chem_target also evaluated.
+        chem_names = _load_chem_compound_names()
+        if chem_names:
+            before = len(results)
+            results = [r for r in results
+                       if r.get("compound_name") in chem_names]
+            print(f"Restricted STP set to {len(results)}/{before} compounds "
+                  f"shared with chem_target ({len(chem_names)} chem_target compounds)")
         stp_stats = _rebuild_stats_from_results(results)
-        generate_comparison(stp_stats)
+        # Compute STP classification metrics on the shared set (generate_comparison
+        # expects them under "_metrics_k1"; the --report-only path skips this).
+        stp_pred_sets = (_load_stp_predicted_sets(_STP_RAW_CSV, k=3)
+                         if _STP_RAW_CSV.exists() else {})
+        _tl: list[str] = []
+        _k1: list[list[str]] = []
+        for r in results:
+            pdata = stp_pred_sets.get(r.get("compound_name", ""), {})
+            _tl.append(r.get("true_class") or "unknown")
+            _k1.append(pdata.get("top1", []))
+        stp_stats["_metrics_k1"] = compute_metrics(_tl, _k1)  # type: ignore[assignment]
+        # True intersection: restrict chem_target side to compounds STP also ran.
+        stp_names = {r.get("compound_name") for r in results}
+        generate_comparison(stp_stats, restrict_names=stp_names)
     else:
         # Full run
         print("=== PHASE: LOAD ===")
