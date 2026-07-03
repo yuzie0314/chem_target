@@ -285,9 +285,10 @@ non-deterministic — deliberately skipped per "don't over-engineer").
 
 \## Current status (headline)
 
-- **Core 11-class Top-1 (TUNING set): 190/220 = 86.4%   Top-3: 197/220 = 89.5%** (mechanistic classes) — branch `dev/validation`.
+- **Core 11-class Top-1 (TUNING set): 185/220 = 84.1%** (mechanistic classes) — branch `dev/validation`.
   - ⚠️ **This is a resubstitution number.** All conditional rules were tuned against this exact curated set (now frozen in git). It is an **upper bound**, not a generalisation estimate.
-  - **PURE HELD-OUT Top-1: 580/936 = 62.0%** (`data/benchmark/holdout/compounds.csv` = `limit` minus curated by id AND canonical SMILES, zero overlap; leak-guarded in eval_holdout.py) → **+24.4-pt overfitting gap**. Hand-tuned classes collapse out-of-sample (CYP450 95→28%, serine protease 65→29%, COX 75→38%, tubulin 95→41%); pharmacophore-specific classes hold (CA 100→95%, GPCR 100→93%). Reproduce: `python eval_holdout.py`.
+  - **PURE HELD-OUT Top-1: 585/936 = 62.5%** (`data/benchmark/holdout/compounds.csv` = `limit` minus curated by id AND canonical SMILES, zero overlap; leak-guarded in eval_holdout.py) → **+21.6-pt overfitting gap**. Hand-tuned classes collapse out-of-sample (CYP450 70→27%, serine protease 65→29%, COX 75→38%, tubulin 95→41%); pharmacophore-specific classes hold (CA 100→95%, GPCR 100→94%). Reproduce: `python eval_holdout.py`.
+  - **2026-07-03 de-overfitting pass** (ablation-driven, see "De-overfitting" below): removed the ID-tuned CYP450 aryl-halide rules (−5 tuning CYP450, +0 held-out — pure memorisation) and re-keyed the cathepsin rule on a *non-aryl* nitrile warhead (+5 held-out, mostly NR; all 12 curated cathepsin TPs kept). Gap 24.4→21.6pt. Was 190/220=86.4%.
 - Blind-spot rule-backed (extended set): MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20.
 - The rule layer is complete; ProLIF 3D-fallback runs end-to-end but is NOT auto-registered (zero regression) and recovers 0/7 SP misses (see the 3D-fallback section).
 - Per-class detail → `doc/benchmark_results.md`; the "what's built" checklist lives in `git log` (the rules/decisions that matter are in the sections that follow — mechanistic_weight, conditional rules, negative results, structural limits).
@@ -326,6 +327,8 @@ negative results" below.
 **Routing-only Python detector (NOT in fg_database.json → no IDF impact):**
 `Fused azolo-diazine` — `utils/fg_detector._detect_fused_azolo_diazine`: aromatic 5-ring(≥2N) fused to 6-ring(≥2N). Purine / triazolopyrimidine / pyrazolopyrimidine core. Consumed only by the pyrimidine router (branch 2 → adenosine) and the CYP450 negative constraint. Appears in `fgs_detected` but casts no votes.
 
+`Non-aryl nitrile` — SMARTS `[!c;!#1][CX2]#[NX1]` in `_WARHEAD_ANNOTATIONS` (routing-only, not in fg_database → no IDF shift). A nitrile NOT bonded to an aromatic ring = the electrophilic cathepsin thioimidate warhead (aliphatic/heteroatom-bound), as opposed to an inert aryl nitrile. Consumed only by the cysteine-protease rule (replaced the generic `Nitrile` FG there, 2026-07-03).
+
 ---
 
 \## Conditional scoring rules (utils/target_predictor.py)
@@ -334,18 +337,14 @@ All rules are pre-IDF bonuses (multiplied by IDF before adding to final score).
 
 | Rule | Condition | Target | Bonus | Rationale |
 |---|---|---|---|---|
-| CYP450 azole | **free heme azole** (`_has_free_heme_azole`) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole heme-Fe coordination (fluconazole/voriconazole/ketoconazole/ritonavir class). Free azole = Triazole OR Thiazole OR (Imidazole & not Benzimidazole), AND not Fused-azolo-diazine — excludes purine-mimetic fused cores (adenosine/kinase) while keeping voriconazole (free triazole + separate fluoropyrimidine) |
-| CYP450 aryl-COOH A | COOH + Phenyl + Halogen, no Amide, no Ether | cytochrome P450 | +1.5 | Minimal aryl-halide CYP substrate |
-| CYP450 aryl-COOH B | COOH + Amide + Ether + Phenyl + Halogen | cytochrome P450 | +1.5 | Extended aryl-halide CYP substrate |
-| CYP450 ether-amine | Ether + TertAmine + Phenyl + Halogen, no Lactone/Amide/Nitrile | cytochrome P450 | +1.5 | CYP3A4 scaffold (aprepitant-type) |
-| CYP450 amide-halide | Amide + Phenyl + Halogen, no Sulfonamide/COOH/Imidazole/αβunsat/Ether | cytochrome P450 | +0.6 | Minimal amide-halide CYP substrate (raised from 0.5 to compensate IDF shift from Thiazole) |
+| CYP450 azole | **free heme azole** (`_has_free_heme_azole`) + {Phenyl/Ether/Halogen}, Ketone only if no Amide/TertAmine, no Purine/αβunsat/Sulfonamide | cytochrome P450 | +2.0 | Azole heme-Fe coordination (fluconazole/voriconazole/ketoconazole/ritonavir class). Free azole = Triazole OR Thiazole OR (Imidazole & not Benzimidazole), AND not Fused-azolo-diazine — excludes purine-mimetic fused cores (adenosine/kinase) while keeping voriconazole (free triazole + separate fluoropyrimidine). **The ONLY CYP450 rule** — the aryl-halide/amide-halide/ether-amine COOH sub-rules were removed 2026-07-03 (ID-tuned memorisation: −5 tuning, +0 held-out) |
 | COX indole-sulfonamide | Indole + Sulfonamide | COX | +2.0 | Indole scaffold + COX-2 selectivity pocket |
 | mTOR macrolide | Macrolide, no Thiol/αβunsat/Acylsulfonamide | mTOR | +2.0 | Rapamycin-class allosteric FKBP12 binding |
 | Adenosine Purine | Purine present | adenosine receptor | +0.5 | Purine is the defining adenosine scaffold |
 | Kinase αβunsat warhead | α,β-unsat. carbonyl present | kinase | +0.5 | Covalent Michael acceptor warhead (EGFR) |
 | Kinase sulfonamide-amine | Sulfonamide + TertAmine | kinase | +2.0 | Kinase linker hijacked by CA (Sulfonamide mw=2.0) |
 | MAO warhead | (Propargylamine OR Hydrazine), no Sulfonamide/Nitrile/αβunsat | MAO | +2.5 | Irreversible MAO inhibitor: propargylamine→FAD adduct (selegiline/clorgiline) or hydrazine (phenelzine). Exclusions prevent CA/covalent-kinase false positives. Markers are routing-only (`_WARHEAD_ANNOTATIONS`, not in fg_database → no IDF shift) |
-| Cysteine protease nitrile | Nitrile + Amide, no αβunsat/Pyrimidine/Quinazoline/Pyrrolopyrimidine/Fused-azolo/Sulfonamide | cysteine protease | +2.5 | Peptidomimetic nitrile warhead → thioimidate with catalytic Cys25 (odanacatib/cathepsin-K class). Exclusions strip kinase-hinge / covalent-kinase / CA contexts. In 320-cpd benchmark matches exactly 12 compounds, all cysteine protease (zero collision) |
+| Cysteine protease nitrile | **Non-aryl nitrile** + Amide, no αβunsat/Pyrimidine/Quinazoline/Pyrrolopyrimidine/Fused-azolo/Sulfonamide | cysteine protease | +2.5 | Peptidomimetic nitrile warhead → thioimidate with catalytic Cys25 (odanacatib/cathepsin-K class). **Keys on the "Non-aryl nitrile" routing marker (2026-07-03), not the generic Nitrile FG** — an aryl nitrile (enobosarm/aryl-CN androgen ligands) is inert, not a warhead; the switch stops the rule mis-grabbing aryl-nitrile NR/HDAC compounds (held-out +5) while keeping all 12 curated cathepsin TPs. Exclusions strip kinase-hinge / covalent-kinase / CA contexts |
 
 \### Pyrimidine router (`_pyrimidine_router`, utils/target_predictor.py)
 

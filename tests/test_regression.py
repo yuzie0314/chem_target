@@ -85,6 +85,23 @@ class TestPredictionInvariants(unittest.TestCase):
             assess_confidence(pd.DataFrame(), []), "none",
         )
 
+    def test_aryl_nitrile_not_grabbed_as_cysteine_protease(self) -> None:
+        # Enobosarm: an aryl-nitrile + amide androgen (nuclear-receptor) ligand.
+        # The cathepsin rule keys on "Non-aryl nitrile", so an inert aryl nitrile
+        # must NOT be mis-predicted as cysteine protease.
+        res = predict("C[C@](O)(COc1ccc(C#N)cc1)C(=O)Nc1ccc(C#N)c(C(F)(F)F)c1")
+        votes = res["target_class_votes"]
+        self.assertFalse(votes.empty)
+        self.assertNotEqual(str(votes.iloc[0]["target_class"]), "cysteine protease")
+
+    def test_empty_votes_after_negative_constraint_does_not_crash(self) -> None:
+        # A fused azolo-diazine + pyrimidine whose only class vote is CYP450 gets
+        # that vote suppressed by the negative constraint, emptying the votes.
+        # predict_target_classes must return an empty frame, not raise.
+        fgs = ["Fused azolo-diazine", "Pyrimidine", "Triazole"]
+        df = predict_target_classes(fgs, load_fg_db())
+        self.assertIn("target_class", df.columns)
+
 
 class TestCuratedBenchmarkRegression(unittest.TestCase):
     """Lock the headline accuracy against the frozen tuning set."""
@@ -117,11 +134,13 @@ class TestCuratedBenchmarkRegression(unittest.TestCase):
             n, 220,
             f"expected 220 core-11 curated compounds, found {n}",
         )
-        # Headline is 190/220 = 86.4%. Lock it: a rule change that moves this
-        # must be deliberate (update the expected value with justification).
+        # Headline is 185/220 = 84.1% (was 190 before the 2026-07-03 mechanistic
+        # de-overfitting: removed the ID-tuned aryl-halide CYP450 rules → −5 CYP450
+        # tuning, +0 held-out). Lock it: a rule change that moves this must be
+        # deliberate (update the expected value with justification).
         self.assertEqual(
-            hits, 190,
-            f"core-11 Top-1 regressed/changed: {hits}/220 (expected 190). "
+            hits, 185,
+            f"core-11 Top-1 regressed/changed: {hits}/220 (expected 185). "
             "If intended, update this assertion and the README/CLAUDE headline.",
         )
 

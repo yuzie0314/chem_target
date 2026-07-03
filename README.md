@@ -144,22 +144,27 @@ Outputs saved to `output/benchmark/`:
 
 | Set | N | Top-1 | Top-3 |
 |---|---|---|---|
-| **Core 11 mechanistic classes — TUNING set (2026-06-16)** | **220** | **86.4% (190/220)** | **89.5% (197/220)** |
-| + blind-spot rule-backed (MAO, COMT, cysteine protease, topoisomerase) | 300 | 72.3% (217/300) | — |
-| **Core 11 — PURE HELD-OUT (zero overlap with tuning set)** | **936** | **62.0% (580/936)** | — |
+| **Core 11 mechanistic classes — TUNING set (2026-07-03)** | **220** | **84.1% (185/220)** | — |
+| **Core 11 — PURE HELD-OUT (zero overlap with tuning set)** | **936** | **62.5% (585/936)** | — |
 
 > ⚠️ **Read the two core-11 rows together.** Every conditional rule in
 > `utils/target_predictor.py` was tuned against the *curated* 20-per-class set,
-> so **86.4% is a resubstitution (tuning-set) number — an upper bound, not an
+> so **84.1% is a resubstitution (tuning-set) number — an upper bound, not an
 > estimate of real-world accuracy.** Scoring the identical model on a broader
 > held-out sample (`data/benchmark/holdout/compounds.csv` — the frozen `limit`
 > download with every curated tuning compound removed by ChEMBL id *and*
-> canonical SMILES, zero overlap) gives **62.0%** — a **+24.4-point overfitting
+> canonical SMILES, zero overlap) gives **62.5%** — a **+21.6-point overfitting
 > gap**. The drop is
-> concentrated in the hand-tuned classes (CYP450 95→28%, serine protease
+> concentrated in the hand-tuned classes (CYP450 70→27%, serine protease
 > 65→29%, COX 75→38%, tubulin 95→41%); classes carried by genuinely specific
-> pharmacophores generalise (carbonic anhydrase 100→95%, GPCR 100→93%).
+> pharmacophores generalise (carbonic anhydrase 100→95%, GPCR 100→94%).
 > Reproduce with `python eval_holdout.py`.
+>
+> **2026-07-03 de-overfitting pass** narrowed the gap from +24.4 to +21.6 pts by
+> replacing ID-tuned bonuses with generalisable mechanistic features (see
+> "Reducing overfitting" below): tuning 86.4%→84.1% (honest −5 CYP450 from
+> removing memorised aryl-halide rules), held-out 62.0%→62.5% (+5, mostly nuclear
+> receptor, from keying the cathepsin rule on a *non-aryl* nitrile warhead).
 
 Per-class (curated, 20 compounds each):
 
@@ -168,7 +173,7 @@ Per-class (curated, 20 compounds each):
 | GPCR | 100% | 100% | ✅ |
 | HDAC | 100% | 100% | ✅ |
 | Carbonic anhydrase | 100% | 100% | ✅ |
-| CYP450 | 95% | 95% | Thiazole SMARTS fixes ritonavir-class ×5; 1 structural (TAZAROTENIC ACID) |
+| CYP450 | 70% | — | Azole heme-Fe rule (mechanistic, generalises); ID-tuned aryl-halide rules removed 2026-07-03 (−5 tuning, +0 held-out) |
 | Tubulin | 95% | 100% | -1 GS-9256 (thiazole+ether; FG profile ≡ ritonavir-class, irreconcilable) |
 | Kinase | 90% | 95% | Pyrimidine router (mono-pyrimidine→kinase) + α,β-unsat. warhead bonuses |
 | mTOR | 85% | 85% | Morpholino-diazine (TORKinib) + Macrolide (rapalog) motifs; 3 remain (no morpholine) |
@@ -186,6 +191,38 @@ Per-class (curated, 20 compounds each):
 > pharmacophores (propargylamine, nitrocatechol) the marketed drugs carry. The warhead/
 > nitrocatechol rules correctly capture the genuine drugs in the set; the cap reflects the
 > sampling, not a rule gap.
+
+#### Reducing overfitting (2026-07-03)
+
+The conditional rules were audited against the held-out set by **ablation** — each
+rule was disabled in turn and its marginal effect measured on *both* the tuning
+and held-out sets. This cleanly separates rules that encode real mechanism from
+rules that memorise tuning compounds:
+
+| Rule | tuning Δ | held-out Δ | verdict |
+|---|---|---|---|
+| pyrimidine router | −27 | **−91** | strongly generalises — keep |
+| CYP450 azole heme-Fe | −7 | **−17** | generalises — keep |
+| COX indole-sulfonamide | −4 | −3 | generalises — keep |
+| CYP450 aryl-halide COOH (×4) | −5 | **+0** | **memorised → removed** |
+| cathepsin `Nitrile`+Amide | +0 | +0* | **too broad → keyed on non-aryl nitrile** |
+
+Two changes followed, replacing ID-tuned bonuses with mechanistic features:
+
+1. **Removed the aryl-halide / amide-halide / ether-amine CYP450 rules.** Their
+   comments cited specific ChEMBL ids ("only APREPITANT matches…"); ablation
+   confirmed they recovered 5 tuning compounds by memorisation and did nothing on
+   held-out (halogen/phenyl/COOH are promiscuity features, not CYP pharmacophores).
+   Only the mechanistic azole heme-Fe rule remains.
+2. **Keyed the cathepsin rule on a *non-aryl* nitrile**, not the generic `Nitrile`
+   FG. The covalent thioimidate warhead is aliphatic; an aryl nitrile (enobosarm,
+   aryl-CN androgen ligands) is inert. This stopped the rule mis-grabbing
+   aryl-nitrile nuclear-receptor/HDAC compounds (held-out +5, mostly NR) while
+   keeping all 12 curated cathepsin true positives.
+
+Net: overfitting gap +24.4 → +21.6 pts; held-out 62.0% → 62.5%; tuning 86.4% →
+84.1% (the honest cost of deleting memorisation). Reproduce the ablation logic
+via `eval_holdout.py` + the per-rule toggles in `utils/target_predictor.py`.
 
 Target classes covered by the benchmark (19 classes):
 

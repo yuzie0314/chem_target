@@ -95,7 +95,6 @@ _PYRIMIDINE_KINASE_EXCLUSIONS: frozenset[str] = frozenset({
 _ADENOSINE_PURINE_BONUS: float = 0.5       # Purine scaffold — adenosine receptor defining motif
 _KINASE_ABUNSAT_BONUS: float = 0.5         # alpha,beta-unsat carbonyl — covalent kinase warhead
 _KINASE_SULFONAMIDE_TAMINE_BONUS: float = 2.0  # Sulfonamide + TertAmine — kinase linker hijacked by CA
-_CYP450_ARYL_HALIDE_COOH_BONUS: float = 1.5   # Aryl-halide carboxylic acid — CYP substrate (no Amide/Ether)
 
 # ── Amino acid code lookup ─────────────────────────────────────────────────────
 AA_1TO3: dict[str, str] = {
@@ -240,77 +239,6 @@ def _cyp450_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
         and "Sulfonamide" not in fg_set           # CA Zn-binding context; triazole-sulfonamide CA inhibitors exist
     ):
         return _CYPCOND_AZOLE_BONUS, "azole motif"
-    return 0.0, ""
-
-
-def _cyp450_arylhalide_cooh_bonus(fgs_detected: list[str]) -> tuple[float, str]:
-    """Pre-IDF bonus for CYP450 when aryl-halide carboxylic acid is present without NSAID context.
-
-    Two rules (additive where both fire):
-
-    Rule A: Carboxylic acid + Phenyl ring + Halogen, AND Amide absent AND Ether absent.
-      Catches minimal aryl-halide COOH scaffold (CHEMBL3125537, CHEMBL3407554).
-      Exclusions prevent NSAID conflict:
-        • INDOMETHACIN (COX HIT): has Ether → excluded ✓
-        • CHEMBL4582020 (COX HIT): has Amide → excluded ✓
-
-    Rule B: Carboxylic acid + Amide + Ether + Phenyl ring + Halogen.
-      Catches extended aryl-halide COOH + linker scaffold (CHEMBL3407558, CHEMBL3407575).
-      Safety: the only benchmark HIT with this combo is CHEMBL6067690 (GPCR, score=7.784
-      from 4 GPCR FGs), which remains GPCR even with the +1.5 CYP450 bonus (4.022 < 7.784).
-
-    Returns:
-        (bonus_wt, label) — pre-IDF weight and evidence label.  Returns (0.0, '') if neither
-        rule fires.
-    """
-    fg_set = set(fgs_detected)
-    # Rule A — minimal aryl-halide COOH
-    if (
-        "Carboxylic acid" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Amide" not in fg_set
-        and "Ether" not in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH CYP substrate"
-    # Rule B — extended aryl-halide COOH + Amide + Ether linker
-    if (
-        "Carboxylic acid" in fg_set
-        and "Amide" in fg_set
-        and "Ether" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "aryl-halide COOH+linker CYP substrate"
-    # Rule D — Amide + Phenyl + Halogen without sulfonamide/ether/COOH (minimal CYP substrate)
-    # Catches e.g. CHEMBL3236364.  CA HITs all have Sulfonamide -> excluded.
-    # Bonus raised to +0.6 (was +0.5) to compensate for CYP450 IDF decrease after Thiazole
-    # added as 9th CYP450 annotator (IDF 1.504→1.440); tubulin IDF = 2.251; need 2.251/1.440 > 1.5.
-    if (
-        "Amide" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Sulfonamide" not in fg_set
-        and "Carboxylic acid" not in fg_set
-        and "Imidazole" not in fg_set
-        and "α,β-unsat. carbonyl" not in fg_set
-        and "Ether" not in fg_set
-    ):
-        return 0.6, "amide-halide CYP substrate"
-    # Rule C — Ether + TertAmine + Phenyl + Halogen without kinase/amide context
-    # Captures CYP3A4 inhibitors (aprepitant-class) that are stolen by GPCR (TerAmine+Phenyl tie).
-    # Exclusions: Lactone (kinase HITs), Amide (SP/kinase), Nitrile (NR HIT).
-    # Verified: only APREPITANT matches in 220-compound benchmark.
-    if (
-        "Ether" in fg_set
-        and "Tertiary amine" in fg_set
-        and "Phenyl ring" in fg_set
-        and "Halogen" in fg_set
-        and "Lactone" not in fg_set
-        and "Amide" not in fg_set
-        and "Nitrile" not in fg_set
-    ):
-        return _CYP450_ARYL_HALIDE_COOH_BONUS, "ether-amine CYP3A4 scaffold"
     return 0.0, ""
 
 
@@ -472,26 +400,32 @@ def _mao_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
 def _cysteine_protease_conditional_bonus(fgs_detected: list[str]) -> tuple[float, str]:
     """Pre-IDF bonus vote for cysteine protease — peptidomimetic nitrile warhead.
 
-    Rule: Nitrile + Amide present, AND none of _CYSPROT_EXCLUSIONS.
+    Rule: Non-aryl nitrile + Amide present, AND none of _CYSPROT_EXCLUSIONS.
 
     Rationale:
         Reversible covalent cathepsin inhibitors (odanacatib / cathepsin-K class)
         carry a nitrile warhead that forms a thioimidate with the catalytic Cys25.
-        On the benchmark these are peptidomimetics (Nitrile + multiple Amides) with
-        no kinase ATP-hinge.  Nitrile alone is ambiguous (it also annotates nuclear
-        receptor, and covalent kinase inhibitors carry Nitrile + an α,β-unsat.
-        warhead), so the rule additionally requires an amide scaffold and excludes
-        the kinase-hinge / covalent-kinase / carbonic-anhydrase markers.
+        On the benchmark these are peptidomimetics (nitrile + multiple Amides) with
+        no kinase ATP-hinge.
 
-        In the 320-compound benchmark this combination matches exactly 12 compounds,
-        all true cysteine protease (zero collision with kinase / NR / CA).
+        Mechanistic refinement (2026-07-03): the rule keys on the routing-only
+        "Non-aryl nitrile" marker, NOT the generic "Nitrile" FG.  Only a non-aryl
+        (aliphatic/heteroatom-bound) nitrile is the electrophilic thioimidate-
+        forming warhead; an *aryl* nitrile (enobosarm/bicalutamide-type androgen
+        ligands, aryl-CN HDAC series) is an inert aromatic substituent.  Keying on
+        bare "Nitrile" made this rule mis-grab those aryl-nitrile nuclear-receptor
+        / HDAC compounds (held-out: +5 core-11 recovered by the switch); keying on
+        "Non-aryl nitrile" keeps all 12 curated cathepsin true positives (verified)
+        while dropping the aryl-nitrile false grabs.  The excluded kinase-hinge /
+        covalent-kinase / carbonic-anhydrase markers are retained.
 
     Returns:
         (bonus_wt, label) — pre-IDF weight to add to cysteine protease votes and an
         evidence label.  Returns (0.0, '') if the rule does not fire.
     """
     fg_set = set(fgs_detected)
-    if "Nitrile" in fg_set and "Amide" in fg_set and not (fg_set & _CYSPROT_EXCLUSIONS):
+    if ("Non-aryl nitrile" in fg_set and "Amide" in fg_set
+            and not (fg_set & _CYSPROT_EXCLUSIONS)):
         return _CYSPROT_NITRILE_BONUS, "peptidomimetic nitrile cathepsin warhead"
     return 0.0, ""
 
@@ -689,13 +623,16 @@ def predict_target_classes(
         )
 
     # ── Post-accumulation adjustments ────────────────────────────────────────
-    # CYP450 conditional bonus (applied before IDF multiplication)
+    # CYP450 conditional bonus (applied before IDF multiplication).
+    # This is the ONLY CYP450 rule kept: it keys on a free heme-coordinating
+    # azole (fluconazole/voriconazole/ketoconazole/ritonavir class), a genuine
+    # mechanism that generalises (held-out ablation: −17 when removed).  The
+    # former aryl-halide / amide-halide / ether-amine COOH sub-rules were removed
+    # (2026-07-03): they were tuned to specific curated CHEMBL ids, recovered
+    # 5 tuning compounds by memorisation, and contributed +0 on the held-out set
+    # — halogen/phenyl/COOH are promiscuity features, not CYP450 pharmacophores,
+    # and the held-out CYP misses carry no recurring mechanistic motif to key on.
     cyp_bonus, cyp_label = _cyp450_conditional_bonus(fgs_detected)
-    # CYP450 aryl-halide COOH substrate bonus
-    cyp_ah_bonus, cyp_ah_label = _cyp450_arylhalide_cooh_bonus(fgs_detected)
-    if cyp_ah_bonus > 0.0:
-        cyp_bonus += cyp_ah_bonus
-        cyp_label = (cyp_label + " + " + cyp_ah_label).strip(" + ")
     if cyp_bonus > 0.0:
         weighted_votes["cytochrome P450"] = (
             weighted_votes.get("cytochrome P450", 0.0) + cyp_bonus
@@ -752,6 +689,14 @@ def predict_target_classes(
 
     # Negative constraints (suppress incompatible target classes in-place)
     _apply_negative_constraints(fgs_detected, weighted_votes, evidence)
+
+    # A negative constraint can remove the only remaining vote (e.g. a compound
+    # whose sole class was cytochrome P450, then suppressed).  Guard the empty
+    # case so we return an empty frame instead of sorting a column-less one.
+    if not weighted_votes:
+        return pd.DataFrame(
+            columns=["target_class", "score", "votes", "evidence_fgs"]
+        )
 
     rows = []
     for tc, wt_sum in weighted_votes.items():   # insertion order preserved

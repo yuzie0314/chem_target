@@ -232,6 +232,15 @@ _SCAFFOLD_PATTERNS: dict[str, Chem.Mol] = {
 _WARHEAD_ANNOTATIONS: dict[str, str] = {
     "Propargylamine": "[CH1]#CC[NX3]",
     "Hydrazine":      "[NX3;!$(N=*)][NX3;!$(N=*)]",
+    # Non-aryl nitrile: a nitrile whose carbon is NOT bonded to an aromatic ring.
+    # This is the mechanistically-relevant cysteine-protease warhead context —
+    # the electrophilic nitrile that forms a reversible thioimidate with the
+    # catalytic Cys25 (odanacatib / cathepsin-K class) is aliphatic/heteroatom-
+    # bound.  An *aryl* nitrile (e.g. enobosarm, bicalutamide, aryl-CN androgen
+    # ligands) is an inert aromatic substituent, NOT a covalent warhead — using
+    # bare "Nitrile" made the cathepsin rule mis-grab those, so the rule now keys
+    # on this marker instead of the generic Nitrile FG.
+    "Non-aryl nitrile": "[!c;!#1][CX2]#[NX1]",
 }
 
 _WARHEAD_PATTERNS: dict[str, Chem.Mol] = {
