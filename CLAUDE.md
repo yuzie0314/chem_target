@@ -287,7 +287,7 @@ non-deterministic — deliberately skipped per "don't over-engineer").
 
 - **Core 11-class Top-1 (TUNING set): 190/220 = 86.4%   Top-3: 197/220 = 89.5%** (mechanistic classes) — branch `dev/validation`.
   - ⚠️ **This is a resubstitution number.** All conditional rules were tuned against this exact curated set (now frozen in git). It is an **upper bound**, not a generalisation estimate.
-  - **HELD-OUT Top-1: 580/936 = 62.0%** (`limit` set minus tuning compounds) → **+24.4-pt overfitting gap**. Hand-tuned classes collapse out-of-sample (CYP450 95→28%, serine protease 65→29%, COX 75→38%, tubulin 95→41%); pharmacophore-specific classes hold (CA 100→95%, GPCR 100→93%). Reproduce: `python eval_holdout.py`.
+  - **PURE HELD-OUT Top-1: 580/936 = 62.0%** (`data/benchmark/holdout/compounds.csv` = `limit` minus curated by id AND canonical SMILES, zero overlap; leak-guarded in eval_holdout.py) → **+24.4-pt overfitting gap**. Hand-tuned classes collapse out-of-sample (CYP450 95→28%, serine protease 65→29%, COX 75→38%, tubulin 95→41%); pharmacophore-specific classes hold (CA 100→95%, GPCR 100→93%). Reproduce: `python eval_holdout.py`.
 - Blind-spot rule-backed (extended set): MAO 2/20, COMT 8/20, cysteine protease 12/20, topoisomerase 5/20.
 - The rule layer is complete; ProLIF 3D-fallback runs end-to-end but is NOT auto-registered (zero regression) and recovers 0/7 SP misses (see the 3D-fallback section).
 - Per-class detail → `doc/benchmark_results.md`; the "what's built" checklist lives in `git log` (the rules/decisions that matter are in the sections that follow — mechanistic_weight, conditional rules, negative results, structural limits).
